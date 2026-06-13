@@ -1,7 +1,14 @@
 use std::collections::VecDeque;
+use std::path::Path;
+use std::process::Stdio;
+use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
+use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::process::{Child, Command};
 use ts_rs::TS;
+
+use crate::error::{AppError, AppResult};
 
 pub const LOG_CAP: usize = 5000;
 
@@ -49,6 +56,107 @@ impl LogBuffer {
     }
 }
 
+/// Callback invoked for every captured log line.
+pub type LineSink = Arc<dyn Fn(LogLine) + Send + Sync>;
+/// Callback invoked once when the child exits, with the exit code (if any).
+pub type ExitSink = Arc<dyn Fn(Option<i32>) + Send + Sync>;
+
+pub struct ProcessManager {
+    child: Option<Child>,
+    pub buffer: Arc<Mutex<LogBuffer>>,
+}
+
+impl Default for ProcessManager {
+    fn default() -> Self {
+        Self { child: None, buffer: Arc::new(Mutex::new(LogBuffer::default())) }
+    }
+}
+
+impl ProcessManager {
+    pub fn is_running(&self) -> bool {
+        self.child.is_some()
+    }
+
+    /// Spawn `binary` with working dir `cwd` and the given env vars.
+    /// Each captured line is pushed to the buffer and forwarded to `on_line`.
+    pub fn start(
+        &mut self,
+        binary: &Path,
+        cwd: &Path,
+        envs: &[(String, String)],
+        on_line: LineSink,
+        on_exit: ExitSink,
+    ) -> AppResult<()> {
+        if self.is_running() {
+            return Err(AppError::Other("already running".into()));
+        }
+
+        let mut cmd = Command::new(binary);
+        cmd.current_dir(cwd)
+            .envs(envs.iter().cloned())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true);
+
+        let mut child = cmd.spawn()?;
+        let stdout = child.stdout.take().unwrap();
+        let stderr = child.stderr.take().unwrap();
+
+        let buffer = self.buffer.clone();
+        spawn_reader(stdout, LogStream::Stdout, buffer.clone(), on_line.clone());
+        spawn_reader(stderr, LogStream::Stderr, buffer, on_line);
+
+        self.child = Some(child);
+
+        // Exit reporting in P1 is handled lazily by `poll_exit` (called from the
+        // get_status command). The `on_exit` sink is wired through for a future
+        // dedicated waiter task; silence the unused-var warning for now.
+        let _ = on_exit;
+        Ok(())
+    }
+
+    /// Non-blocking check: if the child has exited, take it and return its code.
+    pub fn poll_exit(&mut self) -> Option<Option<i32>> {
+        if let Some(child) = self.child.as_mut() {
+            match child.try_wait() {
+                Ok(Some(status)) => {
+                    self.child = None;
+                    Some(status.code())
+                }
+                _ => None,
+            }
+        } else {
+            None
+        }
+    }
+
+    pub async fn stop(&mut self) -> AppResult<()> {
+        if let Some(mut child) = self.child.take() {
+            let _ = child.start_kill();
+            let _ = child.wait().await;
+            Ok(())
+        } else {
+            Err(AppError::NotRunning)
+        }
+    }
+}
+
+fn spawn_reader<R>(reader: R, stream: LogStream, buffer: Arc<Mutex<LogBuffer>>, on_line: LineSink)
+where
+    R: tokio::io::AsyncRead + Unpin + Send + 'static,
+{
+    tokio::spawn(async move {
+        let mut lines = BufReader::new(reader).lines();
+        while let Ok(Some(text)) = lines.next_line().await {
+            let line = {
+                let mut buf = buffer.lock().unwrap();
+                buf.push(stream.clone(), text)
+            };
+            on_line(line);
+        }
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -71,5 +179,37 @@ mod tests {
         let snap = b.snapshot();
         assert_eq!(snap.len(), LOG_CAP);
         assert_eq!(snap.first().unwrap().seq, 10);
+    }
+
+    #[cfg(unix)]
+    use std::sync::Mutex as StdMutex;
+
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn captures_lines_from_child() {
+        let dir = tempfile::tempdir().unwrap();
+        let script = dir.path().join("fake_noalbs.sh");
+        std::fs::write(&script, "#!/bin/sh\necho hello\necho world\n").unwrap();
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+
+        let captured: Arc<StdMutex<Vec<String>>> = Arc::new(StdMutex::new(Vec::new()));
+        let cap2 = captured.clone();
+        let on_line: LineSink = Arc::new(move |l: LogLine| {
+            cap2.lock().unwrap().push(l.text);
+        });
+        let on_exit: ExitSink = Arc::new(|_| {});
+
+        let mut pm = ProcessManager::default();
+        pm.start(&script, dir.path(), &[], on_line, on_exit).unwrap();
+
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+        let lines = captured.lock().unwrap().clone();
+        assert!(lines.contains(&"hello".to_string()), "got: {lines:?}");
+        assert!(lines.contains(&"world".to_string()), "got: {lines:?}");
+        assert_eq!(pm.buffer.lock().unwrap().snapshot().len(), 2);
     }
 }
