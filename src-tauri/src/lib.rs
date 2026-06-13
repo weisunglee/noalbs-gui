@@ -5,6 +5,7 @@ pub mod env_file;
 pub mod error;
 pub mod process;
 pub mod settings;
+pub mod status;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
