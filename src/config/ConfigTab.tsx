@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../api";
 import type { Config } from "../bindings/Config";
 import { useConfig } from "./useConfig";
+import { consumeFocusEnv } from "./focusEnv";
 import { SwitcherSection } from "./sections/SwitcherSection";
 import { ScenesSection } from "./sections/ScenesSection";
 import { ObsSection } from "./sections/ObsSection";
@@ -19,6 +20,16 @@ export function ConfigTab() {
   const [jsonText, setJsonText] = useState("");
   const [jsonError, setJsonError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (consumeFocusEnv()) {
+      setSub("form");
+      // wait a frame so EnvSection is in the DOM, then scroll to it
+      requestAnimationFrame(() => {
+        document.getElementById("bot-credentials")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
+  }, []);
 
   if (!cfg.loaded) return <p>Loading…</p>;
   if (cfg.error) return <p className="error">{cfg.error}</p>;
