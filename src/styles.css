@@ -13,3 +13,10 @@
 .note { color: #888; font-style: italic; font-size: .875rem; }
 .server-entry { border: 1px solid #ccc; border-radius: 6px; padding: .5rem; margin: .5rem 0; }
 .subfield { margin: .25rem 0 .25rem 1rem; }
+.dashboard .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: .75rem; }
+.dashboard .card { border: 1px solid #ccc; border-radius: 8px; padding: .75rem; }
+.dashboard .card h3 { margin: 0 0 .25rem; font-size: .8rem; text-transform: uppercase; color: #888; }
+.dashboard .card p { margin: 0; font-size: 1.1rem; font-weight: 600; }
+.dashboard .card.ok { border-color: #0a0; }
+.dashboard .card.warn { border-color: #e90; }
+.dashboard .card.off { border-color: #c33; }
