@@ -205,7 +205,18 @@ mod tests {
         let mut pm = ProcessManager::default();
         pm.start(&script, dir.path(), &[], on_line, on_exit).unwrap();
 
-        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        // Wait deterministically until both lines are captured (or time out),
+        // rather than relying on a fixed sleep that flakes under load.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            if captured.lock().unwrap().len() >= 2 {
+                break;
+            }
+            if std::time::Instant::now() >= deadline {
+                panic!("timed out waiting for captured lines: {:?}", captured.lock().unwrap());
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
 
         let lines = captured.lock().unwrap().clone();
         assert!(lines.contains(&"hello".to_string()), "got: {lines:?}");
