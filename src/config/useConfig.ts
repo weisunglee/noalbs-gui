@@ -9,7 +9,9 @@ export type ConfigState = {
   error: string | null;
   setConfig: (c: Config) => void;
   reload: () => Promise<void>;
-  save: () => Promise<{ running: boolean }>;
+  /** Save the current config. Pass an explicit JSON string (e.g. the raw-JSON
+   * editor's text) to save that verbatim instead of the in-state config. */
+  save: (jsonOverride?: string) => Promise<{ running: boolean }>;
 };
 
 export function useConfig(): ConfigState {
@@ -35,15 +37,21 @@ export function useConfig(): ConfigState {
     reload();
   }, [reload]);
 
-  const save = useCallback(async () => {
-    if (!config) throw new Error("no config to save");
-    const res = await api.saveConfig(JSON.stringify(config, (_, v) =>
-      typeof v === "bigint" ? Number(v) : v
-    , 2));
-    setConfigState(res.config);
-    setMissing(false);
-    return { running: res.running };
-  }, [config]);
+  const save = useCallback(
+    async (jsonOverride?: string) => {
+      const json =
+        jsonOverride ??
+        (config
+          ? JSON.stringify(config, (_, v) => (typeof v === "bigint" ? Number(v) : v), 2)
+          : null);
+      if (json === null) throw new Error("no config to save");
+      const res = await api.saveConfig(json);
+      setConfigState(res.config);
+      setMissing(false);
+      return { running: res.running };
+    },
+    [config]
+  );
 
   return {
     config,

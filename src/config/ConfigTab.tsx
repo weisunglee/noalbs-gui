@@ -56,11 +56,9 @@ export function ConfigTab() {
   const doSave = async () => {
     setStatus(null);
     try {
-      // ensure latest edits from whichever sub-tab are in cfg.config
-      if (sub === "advanced") {
-        cfg.setConfig(JSON.parse(jsonText) as Config);
-      }
-      const { running } = await cfg.save();
+      // On the Advanced tab, save the raw JSON text verbatim (the in-state
+      // config may lag the editor). The backend validates it before writing.
+      const { running } = await cfg.save(sub === "advanced" ? jsonText : undefined);
       if (running) {
         if (confirm("Config saved. Restart noalbs to apply the changes now?")) {
           await api.restart();

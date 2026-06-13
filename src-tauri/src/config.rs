@@ -32,7 +32,7 @@ pub struct User {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../src/bindings/")]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct Switcher {
     pub bitrate_switcher_enabled: bool,
     pub only_switch_when_streaming: bool,
@@ -41,11 +41,31 @@ pub struct Switcher {
     pub retry_attempts: u8,
     pub triggers: Triggers,
     pub switching_scenes: SwitchingScenes,
-    #[serde(default)]
     pub stream_servers: Vec<StreamServerEntry>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+// Mirrors upstream NOALBS defaults so a config that omits switcher scalars
+// (which noalbs tolerates) still loads here.
+impl Default for Switcher {
+    fn default() -> Self {
+        Self {
+            bitrate_switcher_enabled: true,
+            only_switch_when_streaming: true,
+            instantly_switch_on_recover: true,
+            auto_switch_notification: true,
+            retry_attempts: 5,
+            triggers: Triggers::default(),
+            switching_scenes: SwitchingScenes {
+                normal: "live".to_string(),
+                low: "low".to_string(),
+                offline: "offline".to_string(),
+            },
+            stream_servers: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../src/bindings/")]
 #[serde(rename_all = "camelCase")]
 pub struct Triggers {
@@ -526,6 +546,27 @@ mod tests {
         assert_eq!(obs.port, 4455);
         assert_eq!(obs.password.as_deref(), Some("pw"));
         assert_eq!(c.optional_scenes.privacy.as_deref(), Some("privacy"));
+    }
+
+    #[test]
+    fn switcher_tolerates_omitted_scalars() {
+        // A config whose switcher omits several scalar fields (which noalbs
+        // tolerates via serde default) must still load here.
+        let json = r#"{
+          "user": { "id": null, "name": "x", "passwordHash": null },
+          "switcher": {
+            "triggers": { "low": 800 },
+            "switchingScenes": { "normal": "L", "low": "LO", "offline": "O" }
+          },
+          "software": { "type": "Obs", "host": "localhost", "password": null, "port": 4455, "collections": null }
+        }"#;
+        let c: Config = serde_json::from_str(json).unwrap();
+        // Missing scalars fall back to upstream defaults.
+        assert_eq!(c.switcher.retry_attempts, 5);
+        assert!(c.switcher.bitrate_switcher_enabled);
+        assert!(c.switcher.stream_servers.is_empty());
+        assert_eq!(c.switcher.triggers.low, Some(800));
+        assert_eq!(c.switcher.triggers.rtt, None);
     }
 
     #[test]
