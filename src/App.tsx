@@ -1,14 +1,30 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { DashboardTab } from "./components/DashboardTab";
 import { LogsTab } from "./components/LogsTab";
 import { SettingsTab } from "./components/SettingsTab";
 import { ConfigTab } from "./config/ConfigTab";
+import { api } from "./api";
+import { applyTheme, watchSystemTheme } from "./theme";
+import type { Theme } from "./bindings/Theme";
 import "./styles.css";
 
 type Tab = "dashboard" | "logs" | "settings" | "config";
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("dashboard");
+  const themeRef = useRef<Theme>("system");
+
+  useEffect(() => {
+    api.getSettings().then((s) => { themeRef.current = s.theme; applyTheme(s.theme); }).catch(() => {});
+    const unwatch = watchSystemTheme(() => themeRef.current);
+    const onThemeChange = (e: Event) => { themeRef.current = (e as CustomEvent<Theme>).detail; };
+    window.addEventListener("themechange", onThemeChange as EventListener);
+    return () => {
+      unwatch();
+      window.removeEventListener("themechange", onThemeChange as EventListener);
+    };
+  }, []);
+
   return (
     <div className="app">
       <nav className="tabs">

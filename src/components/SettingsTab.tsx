@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { api } from "../api";
 import type { Settings } from "../bindings/Settings";
+import { applyTheme } from "../theme";
+import type { Theme } from "../bindings/Theme";
 
 export function SettingsTab() {
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -89,6 +91,33 @@ export function SettingsTab() {
       </div>
 
       {err && <p className="error">{err}</p>}
+
+      <section>
+        <h2>Appearance</h2>
+        <label>Theme
+          <select value={settings.theme} onChange={(e) => {
+            const theme = e.target.value as Theme;
+            const next = { ...settings, theme };
+            setSettings(next);
+            api.saveSettings(next);
+            applyTheme(theme);
+            window.dispatchEvent(new CustomEvent("themechange", { detail: theme }));
+          }}>
+            <option value="system">Follow system</option>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
+        </label>
+      </section>
+
+      <section>
+        <h2>Updates</h2>
+        <label>
+          <input type="checkbox" checked={settings.checkUpdatesOnStartup}
+            onChange={(e) => { const next = { ...settings, checkUpdatesOnStartup: e.target.checked }; setSettings(next); api.saveSettings(next); }} />
+          Check for noalbs updates on startup
+        </label>
+      </section>
     </section>
   );
 }
