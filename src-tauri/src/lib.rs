@@ -21,6 +21,13 @@ pub fn run() {
             let binary_dir = base.join("bin");
             let settings =
                 crate::settings::Settings::load_from(&settings_path).unwrap_or_default();
+            // Back up config.json on launch (overwrites the previous backup), so
+            // the user can restore the state from when they last opened the app.
+            if let Ok(cfg) = crate::commands::config_path(&settings) {
+                if cfg.exists() {
+                    let _ = std::fs::copy(&cfg, cfg.with_file_name("config.json.bak"));
+                }
+            }
             app.manage(crate::commands::AppState {
                 settings: tokio::sync::Mutex::new(settings),
                 settings_path,
@@ -47,6 +54,8 @@ pub fn run() {
             crate::commands::get_env,
             crate::commands::save_env,
             crate::commands::get_dashboard,
+            crate::commands::config_backup_info,
+            crate::commands::restore_config_backup,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

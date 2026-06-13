@@ -67,6 +67,27 @@ export function ConfigTab() {
 
   const onChange = (c: Config) => cfg.setConfig(c);
 
+  const doRestore = async () => {
+    setStatus(null);
+    try {
+      const info = await api.getBackupInfo();
+      if (!info.exists) { setStatus("No backup available yet."); return; }
+      const when = info.modifiedMs ? new Date(info.modifiedMs).toLocaleString() : "an unknown time";
+      if (!confirm(`Restore config.json from the backup taken at ${when}?\nThis overwrites your current config.`)) return;
+      const { config: restored, running } = await api.restoreConfigBackup();
+      cfg.setConfig(restored);
+      setSub("form");
+      if (running) {
+        if (confirm("Restored. Restart noalbs to apply now?")) { await api.restart(); setStatus("Restored and restarted noalbs."); }
+        else setStatus("Restored. Restart noalbs to apply.");
+      } else {
+        setStatus("Restored from backup.");
+      }
+    } catch (e) {
+      setStatus(`Error: ${String(e)}`);
+    }
+  };
+
   const doSave = async () => {
     setStatus(null);
     try {
@@ -94,6 +115,7 @@ export function ConfigTab() {
         <button className={sub === "form" ? "active" : ""} onClick={() => switchTo("form")}>Form</button>
         <button className={sub === "advanced" ? "active" : ""} onClick={() => switchTo("advanced")}>Advanced (JSON)</button>
         <span style={{ flex: 1 }} />
+        <button onClick={doRestore}>Restore backup</button>
         <button onClick={doSave}>Save</button>
       </div>
       {jsonError && <p className="error">{jsonError}</p>}
