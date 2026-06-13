@@ -3,6 +3,7 @@ import { DashboardTab } from "./components/DashboardTab";
 import { LogsTab } from "./components/LogsTab";
 import { SettingsTab } from "./components/SettingsTab";
 import { ConfigTab } from "./config/ConfigTab";
+import { UpdateBanner } from "./components/UpdateBanner";
 import { api } from "./api";
 import { applyTheme, watchSystemTheme } from "./theme";
 import type { Theme } from "./bindings/Theme";
@@ -27,6 +28,7 @@ export default function App() {
 
   return (
     <div className="app">
+      <UpdateBanner />
       <nav className="tabs">
         <button className={tab === "dashboard" ? "active" : ""} onClick={() => setTab("dashboard")}>
           Dashboard
