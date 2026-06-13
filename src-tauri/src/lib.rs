@@ -37,6 +37,7 @@ pub fn run() {
             crate::commands::check_update,
             crate::commands::download_binary,
             crate::commands::get_log_buffer,
+            crate::commands::clear_logs,
             crate::commands::get_status,
             crate::commands::start_noalbs,
             crate::commands::stop_noalbs,

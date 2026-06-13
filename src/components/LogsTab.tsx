@@ -33,7 +33,7 @@ export function LogsTab() {
           <input type="checkbox" checked={autoscroll} onChange={(e) => setAutoscroll(e.target.checked)} />
           autoscroll
         </label>
-        <button onClick={() => setLines([])}>clear view</button>
+        <button onClick={() => { api.clearLogs().catch(() => {}); setLines([]); }}>Clear</button>
       </div>
       <div className="logs-list">
         {shown.map((l) => (

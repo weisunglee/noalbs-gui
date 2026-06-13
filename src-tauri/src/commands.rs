@@ -93,6 +93,13 @@ pub async fn get_log_buffer(state: State<'_, AppState>) -> AppResult<Vec<LogLine
 }
 
 #[tauri::command]
+pub async fn clear_logs(state: State<'_, AppState>) -> AppResult<()> {
+    let pm = state.process.lock().await;
+    pm.buffer.lock().unwrap().clear();
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn get_status(app: AppHandle, state: State<'_, AppState>) -> AppResult<bool> {
     let mut pm = state.process.lock().await;
     // If the child exited on its own (e.g. noalbs crashed), surface it: emit a
