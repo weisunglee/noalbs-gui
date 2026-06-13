@@ -6,6 +6,7 @@ import { SwitcherSection } from "./sections/SwitcherSection";
 import { ScenesSection } from "./sections/ScenesSection";
 import { ObsSection } from "./sections/ObsSection";
 import { OptionsSection } from "./sections/OptionsSection";
+import { StreamServersSection } from "./sections/StreamServersSection";
 import { RawJsonEditor } from "./RawJsonEditor";
 
 type Sub = "form" | "advanced";
@@ -91,7 +92,8 @@ export function ConfigTab() {
           <ObsSection config={config} onChange={onChange} />
           <ScenesSection config={config} onChange={onChange} />
           <OptionsSection config={config} onChange={onChange} />
-          <p className="note">streamServers and chat are edited via the Advanced (JSON) tab in this version.</p>
+          <StreamServersSection config={config} onChange={onChange} />
+          <p className="note">chat is edited via the Advanced (JSON) tab in this version.</p>
         </div>
       ) : (
         <RawJsonEditor value={jsonText} onChange={setJsonText} />
