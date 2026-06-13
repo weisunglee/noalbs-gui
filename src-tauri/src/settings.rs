@@ -69,9 +69,43 @@ impl Settings {
     }
 }
 
+/// Resolve the portable data directory for a given executable path. Data lives
+/// in a `noalbsgui-data` folder next to the executable. On macOS the binary is
+/// inside `Foo.app/Contents/MacOS/`, so the folder is placed next to the `.app`.
+pub fn portable_base_for(exe: &std::path::Path) -> PathBuf {
+    let mut dir = exe.parent().map(|p| p.to_path_buf()).unwrap_or_default();
+    // Climb out of a macOS .app bundle so data sits beside it, not inside it.
+    if dir.ends_with("Contents/MacOS") {
+        if let Some(p) = dir.ancestors().nth(3) {
+            dir = p.to_path_buf();
+        }
+    }
+    dir.join("noalbsgui-data")
+}
+
+/// Portable data directory next to the currently running executable.
+pub fn portable_base() -> PathBuf {
+    let exe = std::env::current_exe().expect("resolve current executable");
+    portable_base_for(&exe)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn portable_base_plain_exe() {
+        let p = portable_base_for(std::path::Path::new("/opt/noalbsgui/NOALBSGUI"));
+        assert_eq!(p, std::path::Path::new("/opt/noalbsgui/noalbsgui-data"));
+    }
+
+    #[test]
+    fn portable_base_macos_app_bundle() {
+        let p = portable_base_for(std::path::Path::new(
+            "/Users/me/Downloads/NOALBSGUI.app/Contents/MacOS/NOALBSGUI",
+        ));
+        assert_eq!(p, std::path::Path::new("/Users/me/Downloads/noalbsgui-data"));
+    }
 
     #[test]
     fn load_missing_returns_default() {

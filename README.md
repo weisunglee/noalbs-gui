@@ -1,6 +1,15 @@
 # NOALBSGUI
 
+[![Release](https://github.com/weisunglee/noalbs-gui/actions/workflows/release.yml/badge.svg)](https://github.com/weisunglee/noalbs-gui/actions/workflows/release.yml)
+[![CI](https://github.com/weisunglee/noalbs-gui/actions/workflows/ci.yml/badge.svg)](https://github.com/weisunglee/noalbs-gui/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/weisunglee/noalbs-gui?include_prereleases)](https://github.com/weisunglee/noalbs-gui/releases/latest)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 A cross-platform desktop GUI for [**NOALBS**](https://github.com/NOALBS/nginx-obs-automatic-low-bitrate-switching) (NGINX/OBS Automatic Low-Bitrate Switching).
+
+**➡️ [Download the latest build](https://github.com/weisunglee/noalbs-gui/releases/latest)** — portable, no install: unzip/extract and run. (Builds are unsigned; see [Building from source](#building-from-source) for the security-warning note.)
+
+> It's portable: the app keeps its settings and the downloaded `noalbs` binary in a `noalbsgui-data` folder **next to the executable**, so keep it in a writable location (e.g. its own folder, not a read-only mount).
 
 NOALBS is a tool for IRL streamers that automatically switches scenes in OBS based on your incoming stream's bitrate — when your connection drops, it flips to a "low" or "offline" scene, and switches back when it recovers. It's powerful, but it's configured by hand-editing a `config.json` and an `.env`, and run from a terminal.
 
