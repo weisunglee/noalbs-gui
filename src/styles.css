@@ -11,3 +11,5 @@
 .config-form fieldset { margin-bottom: 1rem; }
 .config-form label { display: block; margin: .25rem 0; }
 .note { color: #888; font-style: italic; font-size: .875rem; }
+.server-entry { border: 1px solid #ccc; border-radius: 6px; padding: .5rem; margin: .5rem 0; }
+.subfield { margin: .25rem 0 .25rem 1rem; }
