@@ -152,6 +152,18 @@ impl ProcessManager {
             Err(AppError::NotRunning)
         }
     }
+
+    /// Synchronously signal the child to terminate without awaiting reaping.
+    /// Used during app shutdown, where the Tauri event loop is tearing down and
+    /// we can't run async code (and `kill_on_drop` won't fire because managed
+    /// state isn't dropped on exit). The orphaned child is reaped by the OS once
+    /// the GUI process exits.
+    pub fn kill_sync(&mut self) {
+        if let Some(mut child) = self.child.take() {
+            self.started_at = None;
+            let _ = child.start_kill();
+        }
+    }
 }
 
 fn spawn_reader<R>(reader: R, stream: LogStream, buffer: Arc<Mutex<LogBuffer>>, on_line: LineSink)
