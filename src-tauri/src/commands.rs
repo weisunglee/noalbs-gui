@@ -6,6 +6,7 @@ use tokio::sync::Mutex;
 
 use crate::binary::{self, ReleaseAsset};
 use crate::config::Config;
+use crate::env_file::{self, EnvValues};
 use crate::error::{AppError, AppResult};
 use crate::process::{ExitSink, LineSink, LogLine, ProcessManager};
 use crate::settings::{BinarySource, Settings};
@@ -168,4 +169,25 @@ pub async fn save_config(state: State<'_, AppState>, json: String) -> AppResult<
     let config = Config::save_str(&path, &json)?;
     let running = state.process.lock().await.is_running();
     Ok(SaveConfigResult { config, running })
+}
+
+fn env_path(s: &crate::settings::Settings) -> AppResult<PathBuf> {
+    let dir = s.working_dir.clone().or_else(|| {
+        s.binary_path.as_ref().and_then(|b| b.parent().map(|p| p.to_path_buf()))
+    });
+    dir.map(|d| d.join(".env")).ok_or(AppError::Other(
+        "no working directory or binary path set".into(),
+    ))
+}
+
+#[tauri::command]
+pub async fn get_env(state: State<'_, AppState>) -> AppResult<EnvValues> {
+    let s = state.settings.lock().await.clone();
+    env_file::read_values(&env_path(&s)?)
+}
+
+#[tauri::command]
+pub async fn save_env(state: State<'_, AppState>, values: EnvValues) -> AppResult<()> {
+    let s = state.settings.lock().await.clone();
+    env_file::write_values(&env_path(&s)?, &values)
 }

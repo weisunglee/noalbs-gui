@@ -1,6 +1,7 @@
 pub mod binary;
 pub mod commands;
 pub mod config;
+pub mod env_file;
 pub mod error;
 pub mod process;
 pub mod settings;
@@ -39,6 +40,8 @@ pub fn run() {
             crate::commands::restart_noalbs,
             crate::commands::get_config,
             crate::commands::save_config,
+            crate::commands::get_env,
+            crate::commands::save_env,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

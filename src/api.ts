@@ -4,6 +4,7 @@ import type { Settings } from "./bindings/Settings";
 import type { LogLine } from "./bindings/LogLine";
 import type { Config } from "./bindings/Config";
 import type { SaveConfigResult } from "./bindings/SaveConfigResult";
+import type { EnvValues } from "./bindings/EnvValues";
 
 export const api = {
   getSettings: () => invoke<Settings>("get_settings"),
@@ -19,6 +20,8 @@ export const api = {
   start: () => invoke<void>("start_noalbs"),
   stop: () => invoke<void>("stop_noalbs"),
   restart: () => invoke<void>("restart_noalbs"),
+  getEnv: () => invoke<EnvValues>("get_env"),
+  saveEnv: (values: EnvValues) => invoke<void>("save_env", { values }),
 };
 
 export function onLog(cb: (line: LogLine) => void): Promise<UnlistenFn> {
