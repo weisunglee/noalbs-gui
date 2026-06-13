@@ -1,4 +1,4 @@
-# NOALBSGUI
+# noalbs-gui
 
 [![Release](https://github.com/weisunglee/noalbs-gui/actions/workflows/release.yml/badge.svg)](https://github.com/weisunglee/noalbs-gui/actions/workflows/release.yml)
 [![CI](https://github.com/weisunglee/noalbs-gui/actions/workflows/ci.yml/badge.svg)](https://github.com/weisunglee/noalbs-gui/actions/workflows/ci.yml)
@@ -13,9 +13,9 @@ A cross-platform desktop GUI for [**NOALBS**](https://github.com/NOALBS/nginx-ob
 
 NOALBS is a tool for IRL streamers that automatically switches scenes in OBS based on your incoming stream's bitrate — when your connection drops, it flips to a "low" or "offline" scene, and switches back when it recovers. It's powerful, but it's configured by hand-editing a `config.json` and an `.env`, and run from a terminal.
 
-**NOALBSGUI wraps the official `noalbs` binary** and gives you a friendly window instead: download and run noalbs, edit every setting with forms, and watch its live status — no JSON or command line required.
+**noalbs-gui wraps the official `noalbs` binary** and gives you a friendly window instead: download and run noalbs, edit every setting with forms, and watch its live status — no JSON or command line required.
 
-> NOALBSGUI is an unofficial companion app. It does not modify or re-implement NOALBS; it runs the official release binary as a child process. Not affiliated with the NOALBS project.
+> noalbs-gui is an unofficial companion app. It does not modify or re-implement NOALBS; it runs the official release binary as a child process. Not affiliated with the NOALBS project.
 
 ---
 
@@ -41,7 +41,7 @@ Editing the config and saving while noalbs is running will offer to restart it s
 
 ## Supported platforms
 
-NOALBSGUI runs anywhere Tauri does, but it can only auto-download a `noalbs` binary for the targets the NOALBS project releases:
+noalbs-gui runs anywhere Tauri does, but it can only auto-download a `noalbs` binary for the targets the NOALBS project releases:
 
 | OS | Architecture | Auto-download |
 | --- | --- | --- |
@@ -85,7 +85,7 @@ The installer/app bundle is written to `src-tauri/target/release/bundle/`.
 
 ## How it works
 
-NOALBSGUI follows a thin-shell architecture:
+noalbs-gui follows a thin-shell architecture:
 
 - **Rust backend** (`src-tauri/`) owns all the logic — downloading/extracting the binary, managing the child process and its log buffer, reading/writing `config.json` and `.env`, and parsing status from the log. Configuration is modelled as Rust types that mirror NOALBS's schema exactly.
 - **React + TypeScript frontend** (`src/`) is the view. TypeScript types are generated from the Rust models with [`ts-rs`](https://github.com/Aleph-Alpha/ts-rs), so the UI and backend can't drift out of sync.
