@@ -18,6 +18,7 @@ export const api = {
   checkUpdate: () => invoke<string | null>("check_update"),
   downloadBinary: () => invoke<Settings>("download_binary"),
   getLogBuffer: () => invoke<LogLine[]>("get_log_buffer"),
+  clearLogs: () => invoke<void>("clear_logs"),
   getStatus: () => invoke<boolean>("get_status"),
   start: () => invoke<void>("start_noalbs"),
   stop: () => invoke<void>("stop_noalbs"),
