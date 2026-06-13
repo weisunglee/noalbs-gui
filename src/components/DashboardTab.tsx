@@ -36,6 +36,17 @@ export function DashboardTab() {
           <h3>OBS</h3>
           <p>{st.obs}</p>
         </div>
+        {(() => {
+          const tw = st.twitch;
+          const cls = tw === "connected" ? "ok" : tw === "authFailed" ? "off" : tw === "notConfigured" ? "warn" : "";
+          const label = tw === "connected" ? "connected" : tw === "authFailed" ? "auth failed" : tw === "notConfigured" ? "not configured" : "—";
+          return (
+            <div className={`card ${cls}`}>
+              <h3>Twitch</h3>
+              <p>{label}</p>
+            </div>
+          );
+        })()}
         <div className="card">
           <h3>Scene</h3>
           <p>{st.currentScene ?? "—"}</p>
