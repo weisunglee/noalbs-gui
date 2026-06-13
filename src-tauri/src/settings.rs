@@ -11,6 +11,16 @@ pub enum BinarySource {
     Manual,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, Default)]
+#[ts(export, export_to = "../../src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub enum Theme {
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../src/bindings/")]
 #[serde(rename_all = "camelCase")]
@@ -20,6 +30,8 @@ pub struct Settings {
     pub installed_version: Option<String>,
     pub working_dir: Option<PathBuf>,
     pub check_updates_on_startup: bool,
+    #[serde(default)]
+    pub theme: Theme,
 }
 
 impl Default for Settings {
@@ -30,6 +42,7 @@ impl Default for Settings {
             installed_version: None,
             working_dir: None,
             check_updates_on_startup: true,
+            theme: Theme::System,
         }
     }
 }
@@ -75,8 +88,18 @@ mod tests {
         let mut s = Settings::default();
         s.installed_version = Some("2.17.0".to_string());
         s.binary_source = BinarySource::Manual;
+        s.theme = Theme::Dark;
         s.save_to(&path).unwrap();
         let loaded = Settings::load_from(&path).unwrap();
         assert_eq!(s, loaded);
+    }
+
+    #[test]
+    fn missing_theme_defaults_to_system() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        std::fs::write(&path, r#"{"binarySource":"auto","binaryPath":null,"installedVersion":null,"workingDir":null,"checkUpdatesOnStartup":true}"#).unwrap();
+        let s = Settings::load_from(&path).unwrap();
+        assert_eq!(s.theme, Theme::System);
     }
 }
