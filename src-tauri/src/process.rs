@@ -99,6 +99,11 @@ impl ProcessManager {
             .stderr(Stdio::piped())
             .kill_on_drop(true);
 
+        // CREATE_NO_WINDOW: don't pop up a console window for the child on
+        // Windows. tokio's Command exposes this as an inherent method.
+        #[cfg(windows)]
+        cmd.creation_flags(0x0800_0000);
+
         let mut child = cmd.spawn()?;
         let stdout = child.stdout.take().unwrap();
         let stderr = child.stderr.take().unwrap();
