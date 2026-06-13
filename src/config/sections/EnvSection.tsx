@@ -11,7 +11,7 @@ export function EnvSection() {
   const [status, setStatus] = useState<string | null>(null);
 
   useEffect(() => { api.getEnv().then(setEnv).catch((e) => setStatus(String(e))); }, []);
-  if (!env) return <fieldset><legend>Bot credentials (.env)</legend><p>Loading…</p></fieldset>;
+  if (!env) return <fieldset id="bot-credentials"><legend>Bot credentials (.env)</legend><p>Loading…</p></fieldset>;
 
   const set = (patch: Partial<EnvValues>) => setEnv({ ...env, ...patch });
   const orNull = (v: string): string | null => (v.trim() === "" ? null : v);
@@ -23,7 +23,7 @@ export function EnvSection() {
   };
 
   return (
-    <fieldset>
+    <fieldset id="bot-credentials">
       <legend>Bot credentials (.env)</legend>
       <p className="note">Stored in <code>.env</code> next to config.json. Sensitive values are hidden by default and never logged.</p>
       <label>Twitch bot username <input value={env.twitchBotUsername ?? ""} onChange={(e) => set({ twitchBotUsername: orNull(e.target.value) })} /></label>

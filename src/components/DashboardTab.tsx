@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { api, onStatus } from "../api";
 import type { DashboardSnapshot } from "../bindings/DashboardSnapshot";
+import { requestFocusEnv } from "../config/focusEnv";
 
 function fmtUptime(secs: bigint | null): string {
   if (secs === null) return "—";
@@ -9,7 +11,7 @@ function fmtUptime(secs: bigint | null): string {
   return (h > 0 ? `${h}h ` : "") + `${m}m ${s}s`;
 }
 
-export function DashboardTab() {
+export function DashboardTab({ onNavigate }: { onNavigate?: (tab: "config") => void }) {
   const [d, setD] = useState<DashboardSnapshot | null>(null);
 
   useEffect(() => {
@@ -44,6 +46,17 @@ export function DashboardTab() {
             <div className={`card ${cls}`}>
               <h3>Twitch</h3>
               <p>{label}</p>
+              {tw === "authFailed" && (
+                <button
+                  onClick={() => {
+                    openUrl("https://irlhosting.com/tmi/").catch(() => {});
+                    requestFocusEnv();
+                    onNavigate?.("config");
+                  }}
+                >
+                  Fix — get a token
+                </button>
+              )}
             </div>
           );
         })()}

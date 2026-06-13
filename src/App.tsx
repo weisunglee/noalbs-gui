@@ -57,7 +57,7 @@ export default function App() {
         </button>
       </nav>
       <main>
-        {tab === "dashboard" ? <DashboardTab /> : tab === "settings" ? <SettingsTab /> : tab === "config" ? <ConfigTab /> : <LogsTab />}
+        {tab === "dashboard" ? <DashboardTab onNavigate={setTab} /> : tab === "settings" ? <SettingsTab /> : tab === "config" ? <ConfigTab /> : <LogsTab />}
       </main>
     </div>
   );
