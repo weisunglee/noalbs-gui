@@ -42,19 +42,29 @@ pub async fn download_and_extract(asset: &ReleaseAsset, dest_dir: &Path) -> AppR
     let bin_name = if cfg!(windows) { "noalbs.exe" } else { "noalbs" };
     let out_path = dest_dir.join(bin_name);
 
-    if asset.name.ends_with(".zip") {
-        extract_zip(&bytes, bin_name, &out_path)?;
-    } else {
-        extract_tar_gz(&bytes, bin_name, &out_path)?;
-    }
+    // Extraction is CPU- and blocking-IO-heavy (multi-MB archives); run it off
+    // the async runtime so it can't stall a Tauri worker thread.
+    let is_zip = asset.name.ends_with(".zip");
+    let bytes = bytes.to_vec();
+    let out_path = tokio::task::spawn_blocking(move || -> AppResult<PathBuf> {
+        if is_zip {
+            extract_zip(&bytes, bin_name, &out_path)?;
+        } else {
+            extract_tar_gz(&bytes, bin_name, &out_path)?;
+        }
 
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = std::fs::metadata(&out_path)?.permissions();
-        perms.set_mode(0o755);
-        std::fs::set_permissions(&out_path, perms)?;
-    }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(&out_path)?.permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&out_path, perms)?;
+        }
+
+        Ok(out_path)
+    })
+    .await
+    .map_err(|e| AppError::Other(format!("extraction task failed: {e}")))??;
 
     Ok(out_path)
 }

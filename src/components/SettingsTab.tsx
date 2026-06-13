@@ -16,6 +16,12 @@ export function SettingsTab() {
   };
   useEffect(() => {
     refresh();
+    // Poll status so a self-exit/crash of noalbs is reflected without the user
+    // having to click anything. get_status also emits `noalbs-exit` on exit.
+    const id = setInterval(() => {
+      api.getStatus().then(setRunning).catch(() => {});
+    }, 2000);
+    return () => clearInterval(id);
   }, []);
 
   const guard = async (label: string, fn: () => Promise<void>) => {

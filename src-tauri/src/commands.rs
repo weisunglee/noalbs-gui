@@ -79,9 +79,13 @@ pub async fn get_log_buffer(state: State<'_, AppState>) -> AppResult<Vec<LogLine
 }
 
 #[tauri::command]
-pub async fn get_status(state: State<'_, AppState>) -> AppResult<bool> {
+pub async fn get_status(app: AppHandle, state: State<'_, AppState>) -> AppResult<bool> {
     let mut pm = state.process.lock().await;
-    pm.poll_exit();
+    // If the child exited on its own (e.g. noalbs crashed), surface it: emit a
+    // one-shot `noalbs-exit` so the UI updates even without further user action.
+    if let Some(code) = pm.poll_exit() {
+        let _ = app.emit("noalbs-exit", code);
+    }
     Ok(pm.is_running())
 }
 
