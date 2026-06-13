@@ -99,6 +99,13 @@ impl ProcessManager {
             .stderr(Stdio::piped())
             .kill_on_drop(true);
 
+        #[cfg(windows)]
+        {
+            // CREATE_NO_WINDOW: don't pop up a console window for the child.
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x0800_0000);
+        }
+
         let mut child = cmd.spawn()?;
         let stdout = child.stdout.take().unwrap();
         let stderr = child.stderr.take().unwrap();
