@@ -1,6 +1,7 @@
 pub mod binary;
 pub mod commands;
 pub mod config;
+pub mod env_file;
 pub mod error;
 pub mod process;
 pub mod settings;
