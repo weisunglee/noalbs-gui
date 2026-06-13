@@ -7,7 +7,7 @@
 
 A cross-platform desktop GUI for [**NOALBS**](https://github.com/NOALBS/nginx-obs-automatic-low-bitrate-switching) (NGINX/OBS Automatic Low-Bitrate Switching).
 
-**➡️ [Download the latest build](https://github.com/weisunglee/noalbs-gui/releases/latest)** — portable, no install: unzip/extract and run. (Builds are unsigned; see [Building from source](#building-from-source) for the security-warning note.)
+**➡️ [Download the latest build](https://github.com/weisunglee/noalbs-gui/releases/latest)** — portable, no install: unzip/extract and run. (Builds are unsigned; see [Getting started](#getting-started) for how to get past your OS's first-launch warning.)
 
 > It's portable: the app keeps its settings and the downloaded `noalbs` binary in a `noalbsgui-data` folder **next to the executable**, so keep it in a writable location (e.g. its own folder, not a read-only mount).
 
@@ -36,6 +36,40 @@ NOALBS is a tool for IRL streamers that automatically switches scenes in OBS bas
 Editing the config and saving while noalbs is running will offer to restart it so the changes take effect.
 
 > **Note on bitrate:** the dashboard does not show a live bitrate graph. NOALBS does not print bitrate to its log (it only reports it to chat via `!bitrate`), so it isn't available to the GUI without re-implementing each stream server's stats polling. This may change if a future NOALBS exposes it.
+
+---
+
+## Getting started
+
+### 1. Download and run
+
+Grab the archive for your OS from the [latest release](https://github.com/weisunglee/noalbs-gui/releases/latest), then:
+
+- **macOS** — pick `aarch64-apple-darwin` (Apple Silicon: M1/M2/M3…) or `x86_64-apple-darwin` (Intel). Double-click the `.tar.gz` to extract `noalbs-gui.app`. Because the build is **unsigned**, the first launch is blocked by Gatekeeper — **right-click the app → Open → Open**, or run `xattr -dr com.apple.quarantine noalbs-gui.app` once.
+- **Windows** — download the `.zip`, extract it, and run `noalbs-gui.exe`. SmartScreen may warn ("Windows protected your PC") — click **More info → Run anyway**.
+- **Linux** — download the `.AppImage`, make it executable (`chmod +x noalbs-gui-*.AppImage`), and run it. (Requires FUSE, which most distros ship.)
+
+> Keep the app in its own **writable** folder — on first run it creates a `noalbsgui-data` folder next to the executable to hold its settings, the downloaded `noalbs` binary, and your config.
+
+### 2. Get the `noalbs` binary
+
+Open the **Settings** tab and click **Download latest** — it fetches the official `noalbs` release for your platform and drops a starter `config.json` and `.env` next to it. (Already have a `noalbs` binary? Switch the source to *Manual* and point it at your own.)
+
+### 3. Configure it
+
+Open the **Config** tab and fill in the form:
+
+- **OBS** — host, port, and your OBS WebSocket password (in OBS: *Tools → WebSocket Server Settings*).
+- **Stream servers** — add the server that receives your stream (NGINX, BELABOX, SRT-Live-Server, MediaMTX, …) with its stats URL / keys.
+- **Switcher & Scenes** — set your bitrate/RTT thresholds and the OBS scene names for normal / low / offline (names must match OBS exactly).
+- **Chat** — your platform (Twitch/Kick), channel, and admins (who may use bot commands).
+- **Bot credentials** (the `.env` section) — your Twitch bot username and OAuth token; click **Get token** to open the token generator.
+
+Click **Save**. If noalbs is already running, you'll be asked to restart it so the changes take effect.
+
+### 4. Start and monitor
+
+noalbs starts automatically on launch (toggle under **Settings → Startup**). Use **Start / Stop / Restart** on the **Settings** tab, then watch the **Dashboard** for running state, OBS connection, current scene, and switcher state — and the **Logs** tab for raw output. If the Twitch card shows *auth failed*, its **Fix — get a token** button opens the token page and jumps you to Bot credentials.
 
 ---
 
