@@ -64,11 +64,12 @@ pub type ExitSink = Arc<dyn Fn(Option<i32>) + Send + Sync>;
 pub struct ProcessManager {
     child: Option<Child>,
     pub buffer: Arc<Mutex<LogBuffer>>,
+    started_at: Option<std::time::Instant>,
 }
 
 impl Default for ProcessManager {
     fn default() -> Self {
-        Self { child: None, buffer: Arc::new(Mutex::new(LogBuffer::default())) }
+        Self { child: None, buffer: Arc::new(Mutex::new(LogBuffer::default())), started_at: None }
     }
 }
 
@@ -107,6 +108,7 @@ impl ProcessManager {
         spawn_reader(stderr, LogStream::Stderr, buffer, on_line);
 
         self.child = Some(child);
+        self.started_at = Some(std::time::Instant::now());
 
         // Exit reporting in P1 is handled lazily by `poll_exit` (called from the
         // get_status command). The `on_exit` sink is wired through for a future
@@ -115,12 +117,17 @@ impl ProcessManager {
         Ok(())
     }
 
+    pub fn uptime_secs(&self) -> Option<u64> {
+        self.started_at.map(|t| t.elapsed().as_secs())
+    }
+
     /// Non-blocking check: if the child has exited, take it and return its code.
     pub fn poll_exit(&mut self) -> Option<Option<i32>> {
         if let Some(child) = self.child.as_mut() {
             match child.try_wait() {
                 Ok(Some(status)) => {
                     self.child = None;
+                    self.started_at = None;
                     Some(status.code())
                 }
                 _ => None,
@@ -132,6 +139,7 @@ impl ProcessManager {
 
     pub async fn stop(&mut self) -> AppResult<()> {
         if let Some(mut child) = self.child.take() {
+            self.started_at = None;
             let _ = child.start_kill();
             let _ = child.wait().await;
             Ok(())

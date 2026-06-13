@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as StdMutex};
 
 use tauri::{AppHandle, Emitter, State};
 use tokio::sync::Mutex;
@@ -10,6 +10,7 @@ use crate::env_file::{self, EnvValues};
 use crate::error::{AppError, AppResult};
 use crate::process::{ExitSink, LineSink, LogLine, ProcessManager};
 use crate::settings::{BinarySource, Settings};
+use crate::status::{self, NoalbsStatus};
 
 const GITHUB_API: &str = "https://api.github.com";
 
@@ -18,6 +19,7 @@ pub struct AppState {
     pub settings_path: PathBuf,
     pub binary_dir: PathBuf,
     pub process: Mutex<ProcessManager>,
+    pub status: Arc<StdMutex<NoalbsStatus>>,
 }
 
 #[tauri::command]
@@ -102,9 +104,21 @@ pub async fn start_noalbs(app: AppHandle, state: State<'_, AppState>) -> AppResu
             .to_path_buf()
     });
 
+    // reset before (re)start
+    *state.status.lock().unwrap() = NoalbsStatus::default();
+
+    let status = state.status.clone();
     let app_for_line = app.clone();
     let on_line: LineSink = Arc::new(move |line: LogLine| {
-        let _ = app_for_line.emit("noalbs-log", line);
+        let _ = app_for_line.emit("noalbs-log", line.clone());
+        let changed = {
+            let mut s = status.lock().unwrap();
+            status::parse_status_line(&line.text, &mut s)
+        };
+        if changed {
+            let snapshot = status.lock().unwrap().clone();
+            let _ = app_for_line.emit("noalbs-status", snapshot);
+        }
     });
     let app_for_exit = app.clone();
     let on_exit: ExitSink = Arc::new(move |code: Option<i32>| {
@@ -190,4 +204,25 @@ pub async fn get_env(state: State<'_, AppState>) -> AppResult<EnvValues> {
 pub async fn save_env(state: State<'_, AppState>, values: EnvValues) -> AppResult<()> {
     let s = state.settings.lock().await.clone();
     env_file::write_values(&env_path(&s)?, &values)
+}
+
+#[derive(serde::Serialize, ts_rs::TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub struct DashboardSnapshot {
+    pub running: bool,
+    pub uptime_secs: Option<u64>,
+    pub version: Option<String>,
+    pub status: NoalbsStatus,
+}
+
+#[tauri::command]
+pub async fn get_dashboard(state: State<'_, AppState>) -> AppResult<DashboardSnapshot> {
+    let version = state.settings.lock().await.installed_version.clone();
+    let mut pm = state.process.lock().await;
+    pm.poll_exit(); // refresh running + clear uptime if it exited
+    let running = pm.is_running();
+    let uptime_secs = pm.uptime_secs();
+    let status = state.status.lock().unwrap().clone();
+    Ok(DashboardSnapshot { running, uptime_secs, version, status })
 }

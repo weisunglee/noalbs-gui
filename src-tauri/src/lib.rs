@@ -5,6 +5,7 @@ pub mod env_file;
 pub mod error;
 pub mod process;
 pub mod settings;
+pub mod status;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -24,6 +25,7 @@ pub fn run() {
                 settings_path,
                 binary_dir,
                 process: tokio::sync::Mutex::new(crate::process::ProcessManager::default()),
+                status: std::sync::Arc::new(std::sync::Mutex::new(crate::status::NoalbsStatus::default())),
             });
             Ok(())
         })
@@ -42,6 +44,7 @@ pub fn run() {
             crate::commands::save_config,
             crate::commands::get_env,
             crate::commands::save_env,
+            crate::commands::get_dashboard,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

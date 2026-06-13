@@ -5,6 +5,8 @@ import type { LogLine } from "./bindings/LogLine";
 import type { Config } from "./bindings/Config";
 import type { SaveConfigResult } from "./bindings/SaveConfigResult";
 import type { EnvValues } from "./bindings/EnvValues";
+import type { DashboardSnapshot } from "./bindings/DashboardSnapshot";
+import type { NoalbsStatus } from "./bindings/NoalbsStatus";
 
 export const api = {
   getSettings: () => invoke<Settings>("get_settings"),
@@ -22,6 +24,7 @@ export const api = {
   restart: () => invoke<void>("restart_noalbs"),
   getEnv: () => invoke<EnvValues>("get_env"),
   saveEnv: (values: EnvValues) => invoke<void>("save_env", { values }),
+  getDashboard: () => invoke<DashboardSnapshot>("get_dashboard"),
 };
 
 export function onLog(cb: (line: LogLine) => void): Promise<UnlistenFn> {
@@ -29,4 +32,7 @@ export function onLog(cb: (line: LogLine) => void): Promise<UnlistenFn> {
 }
 export function onExit(cb: (code: number | null) => void): Promise<UnlistenFn> {
   return listen<number | null>("noalbs-exit", (e) => cb(e.payload));
+}
+export function onStatus(cb: (s: NoalbsStatus) => void): Promise<UnlistenFn> {
+  return listen<NoalbsStatus>("noalbs-status", (e) => cb(e.payload));
 }
