@@ -103,11 +103,12 @@ jobs:
           t="${{ matrix.target }}"
           rel="src-tauri/target/$t/release"
           if [ "${{ matrix.kind }}" = "macos" ]; then
-            out="noalbsgui-$TAG-$t.tar.gz"
-            tar -czf "$out" -C "$rel/bundle/macos" NOALBSGUI.app
+            out="noalbs-gui-$TAG-$t.tar.gz"
+            app=$(ls -d "$rel"/bundle/macos/*.app | head -1)
+            tar -czf "$out" -C "$rel/bundle/macos" "$(basename "$app")"
           else
             app=$(ls "$rel"/bundle/appimage/*.AppImage | head -1)
-            out="noalbsgui-$TAG-$t.AppImage"
+            out="noalbs-gui-$TAG-$t.AppImage"
             cp "$app" "$out"
           fi
           gh release upload "$TAG" "$out" --clobber --repo "$GITHUB_REPOSITORY"
@@ -123,6 +124,6 @@ jobs:
           $rel = "src-tauri/target/$t/release"
           $exe = Get-ChildItem "$rel" -Filter *.exe | Sort-Object Length -Descending | Select-Object -First 1
           if (-not $exe) { throw "no .exe found in $rel" }
-          $out = "noalbsgui-$env:TAG-$t.zip"
+          $out = "noalbs-gui-$env:TAG-$t.zip"
           Compress-Archive -Path $exe.FullName -DestinationPath $out -Force
           gh release upload $env:TAG $out --clobber --repo $env:GITHUB_REPOSITORY
