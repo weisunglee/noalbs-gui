@@ -3,6 +3,8 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+fn default_true() -> bool { true }
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../src/bindings/")]
 #[serde(rename_all = "camelCase")]
@@ -32,6 +34,8 @@ pub struct Settings {
     pub check_updates_on_startup: bool,
     #[serde(default)]
     pub theme: Theme,
+    #[serde(default = "default_true")]
+    pub auto_start: bool,
 }
 
 impl Default for Settings {
@@ -43,6 +47,7 @@ impl Default for Settings {
             working_dir: None,
             check_updates_on_startup: true,
             theme: Theme::System,
+            auto_start: true,
         }
     }
 }
@@ -135,5 +140,14 @@ mod tests {
         std::fs::write(&path, r#"{"binarySource":"auto","binaryPath":null,"installedVersion":null,"workingDir":null,"checkUpdatesOnStartup":true}"#).unwrap();
         let s = Settings::load_from(&path).unwrap();
         assert_eq!(s.theme, Theme::System);
+    }
+
+    #[test]
+    fn missing_auto_start_defaults_true() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        std::fs::write(&path, r#"{"binarySource":"auto","binaryPath":null,"installedVersion":null,"workingDir":null,"checkUpdatesOnStartup":true}"#).unwrap();
+        let s = Settings::load_from(&path).unwrap();
+        assert!(s.auto_start);
     }
 }
