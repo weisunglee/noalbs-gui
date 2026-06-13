@@ -1,6 +1,91 @@
+use std::io::Cursor;
+use std::path::{Path, PathBuf};
+
 use serde::Deserialize;
 
+use crate::error::{AppError, AppResult};
+
 pub const REPO: &str = "NOALBS/nginx-obs-automatic-low-bitrate-switching";
+
+const USER_AGENT: &str = "noalbsgui";
+
+/// Fetch the latest release JSON from a GitHub API base URL.
+/// `api_base` is normally "https://api.github.com" (overridable in tests).
+pub async fn fetch_latest_release(api_base: &str) -> AppResult<Release> {
+    let url = format!("{api_base}/repos/{REPO}/releases/latest");
+    let client = reqwest::Client::new();
+    let release = client
+        .get(url)
+        .header(reqwest::header::USER_AGENT, USER_AGENT)
+        .send()
+        .await?
+        .error_for_status()?
+        .json::<Release>()
+        .await?;
+    Ok(release)
+}
+
+/// Download `asset` and extract the `noalbs`/`noalbs.exe` binary into `dest_dir`.
+/// Returns the path to the extracted binary.
+pub async fn download_and_extract(asset: &ReleaseAsset, dest_dir: &Path) -> AppResult<PathBuf> {
+    std::fs::create_dir_all(dest_dir)?;
+    let client = reqwest::Client::new();
+    let bytes = client
+        .get(&asset.url)
+        .header(reqwest::header::USER_AGENT, USER_AGENT)
+        .send()
+        .await?
+        .error_for_status()?
+        .bytes()
+        .await?;
+
+    let bin_name = if cfg!(windows) { "noalbs.exe" } else { "noalbs" };
+    let out_path = dest_dir.join(bin_name);
+
+    if asset.name.ends_with(".zip") {
+        extract_zip(&bytes, bin_name, &out_path)?;
+    } else {
+        extract_tar_gz(&bytes, bin_name, &out_path)?;
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(&out_path)?.permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&out_path, perms)?;
+    }
+
+    Ok(out_path)
+}
+
+fn extract_tar_gz(bytes: &[u8], bin_name: &str, out_path: &Path) -> AppResult<()> {
+    let gz = flate2::read::GzDecoder::new(Cursor::new(bytes));
+    let mut archive = tar::Archive::new(gz);
+    for entry in archive.entries()? {
+        let mut entry = entry?;
+        let path = entry.path()?.into_owned();
+        if path.file_name().and_then(|f| f.to_str()) == Some(bin_name) {
+            entry.unpack(out_path)?;
+            return Ok(());
+        }
+    }
+    Err(AppError::NoMatchingAsset)
+}
+
+fn extract_zip(bytes: &[u8], bin_name: &str, out_path: &Path) -> AppResult<()> {
+    let mut archive = zip::ZipArchive::new(Cursor::new(bytes))?;
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i)?;
+        let name = file.name().to_string();
+        if name.ends_with(bin_name) {
+            let mut out = std::fs::File::create(out_path)?;
+            std::io::copy(&mut file, &mut out)?;
+            return Ok(());
+        }
+    }
+    Err(AppError::NoMatchingAsset)
+}
 
 /// Returns the Rust target-triple substring present in the release asset name
 /// for the current OS/architecture, or None if unsupported.
@@ -66,6 +151,62 @@ pub fn is_update_available(latest_tag: &str, installed: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use wiremock::matchers::{method, path as wiremock_path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    fn make_tar_gz_with_noalbs() -> Vec<u8> {
+        use std::io::Write;
+        let mut tar_buf = Vec::new();
+        {
+            let mut builder = tar::Builder::new(&mut tar_buf);
+            let content = b"#!/bin/sh\necho noalbs\n";
+            let mut header = tar::Header::new_gnu();
+            header.set_path("noalbs").unwrap();
+            header.set_size(content.len() as u64);
+            header.set_mode(0o755);
+            header.set_cksum();
+            builder.append(&header, &content[..]).unwrap();
+            builder.finish().unwrap();
+        }
+        let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        gz.write_all(&tar_buf).unwrap();
+        gz.finish().unwrap()
+    }
+
+    #[tokio::test]
+    async fn fetch_and_download_roundtrip() {
+        let server = MockServer::start().await;
+        let archive = make_tar_gz_with_noalbs();
+
+        let release_json = serde_json::json!({
+            "tag_name": "v2.17.0",
+            "assets": [{
+                "name": "noalbs-v2.17.0-x86_64-unknown-linux-musl.tar.gz",
+                "browser_download_url": format!("{}/download/asset.tar.gz", server.uri())
+            }]
+        });
+
+        Mock::given(method("GET"))
+            .and(wiremock_path(format!("/repos/{REPO}/releases/latest")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&release_json))
+            .mount(&server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(wiremock_path("/download/asset.tar.gz"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(archive))
+            .mount(&server)
+            .await;
+
+        let release = fetch_latest_release(&server.uri()).await.unwrap();
+        assert_eq!(release.tag_name, "v2.17.0");
+
+        let asset = select_asset(&release.assets, "x86_64-unknown-linux-musl").unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let out = download_and_extract(asset, dir.path()).await.unwrap();
+        assert!(out.exists());
+    }
 
     fn assets() -> Vec<ReleaseAsset> {
         ["aarch64-apple-darwin.tar.gz", "x86_64-apple-darwin.tar.gz",
