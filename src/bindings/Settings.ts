@@ -2,4 +2,4 @@
 import type { BinarySource } from "./BinarySource";
 import type { Theme } from "./Theme";
 
-export type Settings = { binarySource: BinarySource, binaryPath: string | null, installedVersion: string | null, workingDir: string | null, checkUpdatesOnStartup: boolean, theme: Theme, };
+export type Settings = { binarySource: BinarySource, binaryPath: string | null, installedVersion: string | null, workingDir: string | null, checkUpdatesOnStartup: boolean, theme: Theme, autoStart: boolean, };

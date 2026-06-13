@@ -118,6 +118,15 @@ export function SettingsTab() {
           Check for noalbs updates on startup
         </label>
       </section>
+
+      <section>
+        <h2>Startup</h2>
+        <label>
+          <input type="checkbox" checked={settings.autoStart}
+            onChange={(e) => { const next = { ...settings, autoStart: e.target.checked }; setSettings(next); api.saveSettings(next); }} />
+          Start noalbs automatically on launch
+        </label>
+      </section>
     </section>
   );
 }

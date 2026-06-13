@@ -26,6 +26,19 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    (async () => {
+      try {
+        const s = await api.getSettings();
+        if (!s.autoStart || !s.binaryPath) return;
+        const running = await api.getStatus();
+        if (!running) await api.start();
+      } catch {
+        /* ignore — user can start manually from Settings */
+      }
+    })();
+  }, []);
+
   return (
     <div className="app">
       <UpdateBanner />
