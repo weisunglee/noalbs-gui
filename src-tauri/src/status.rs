@@ -13,12 +13,23 @@ pub enum ObsConnection {
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
 #[ts(export, export_to = "../../src/bindings/")]
 #[serde(rename_all = "camelCase")]
+pub enum TwitchStatus {
+    Unknown,
+    NotConfigured,
+    Connected,
+    AuthFailed,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+#[serde(rename_all = "camelCase")]
 pub struct NoalbsStatus {
     pub obs: ObsConnection,
     pub current_scene: Option<String>,
     pub last_switch_type: Option<String>,
     pub switcher_state: Option<String>,
     pub user: Option<String>,
+    pub twitch: TwitchStatus,
 }
 
 impl Default for NoalbsStatus {
@@ -29,6 +40,7 @@ impl Default for NoalbsStatus {
             last_switch_type: None,
             switcher_state: None,
             user: None,
+            twitch: TwitchStatus::Unknown,
         }
     }
 }
@@ -53,6 +65,12 @@ pub fn parse_status_line(line: &str, status: &mut NoalbsStatus) -> bool {
         status.obs = ObsConnection::Connecting;
     } else if ends_with_msg(line, "Connected") {
         status.obs = ObsConnection::Connected;
+    } else if line.contains("Couldn't load chat credentials") {
+        status.twitch = TwitchStatus::NotConfigured;
+    } else if line.contains("Twitch authentication failed") {
+        status.twitch = TwitchStatus::AuthFailed;
+    } else if line.contains("Joining channel:") {
+        status.twitch = TwitchStatus::Connected;
     } else if line.contains("Offline timeout reached") {
         status.switcher_state = Some("Offline timeout — stopping stream".to_string());
     } else if line.contains("Switcher disabled") {
@@ -139,5 +157,17 @@ mod tests {
         let mut s = NoalbsStatus::default();
         let changed = parse_status_line("... INFO noalbs: some unrelated line", &mut s);
         assert!(!changed);
+    }
+
+    #[test]
+    fn parses_twitch_states() {
+        let mut s = NoalbsStatus::default();
+        assert_eq!(s.twitch, TwitchStatus::Unknown);
+        parse_status_line("... WARN noalbs: Couldn't load chat credentials from .env - continuing without connecting to chat.", &mut s);
+        assert_eq!(s.twitch, TwitchStatus::NotConfigured);
+        parse_status_line("... INFO noalbs::chat::twitch: Joining channel: b3ck", &mut s);
+        assert_eq!(s.twitch, TwitchStatus::Connected);
+        parse_status_line("... ERROR noalbs::chat::twitch: Twitch authentication failed", &mut s);
+        assert_eq!(s.twitch, TwitchStatus::AuthFailed);
     }
 }
