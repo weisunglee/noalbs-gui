@@ -1,0 +1,25 @@
+import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import type { Settings } from "./bindings/Settings";
+import type { LogLine } from "./bindings/LogLine";
+
+export const api = {
+  getSettings: () => invoke<Settings>("get_settings"),
+  saveSettings: (settings: Settings) => invoke<void>("save_settings", { settings }),
+  setManualBinaryPath: (path: string) =>
+    invoke<Settings>("set_manual_binary_path", { path }),
+  checkUpdate: () => invoke<string | null>("check_update"),
+  downloadBinary: () => invoke<Settings>("download_binary"),
+  getLogBuffer: () => invoke<LogLine[]>("get_log_buffer"),
+  getStatus: () => invoke<boolean>("get_status"),
+  start: () => invoke<void>("start_noalbs"),
+  stop: () => invoke<void>("stop_noalbs"),
+  restart: () => invoke<void>("restart_noalbs"),
+};
+
+export function onLog(cb: (line: LogLine) => void): Promise<UnlistenFn> {
+  return listen<LogLine>("noalbs-log", (e) => cb(e.payload));
+}
+export function onExit(cb: (code: number | null) => void): Promise<UnlistenFn> {
+  return listen<number | null>("noalbs-exit", (e) => cb(e.payload));
+}

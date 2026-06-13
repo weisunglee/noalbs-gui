@@ -1,0 +1,10 @@
+.app { font-family: system-ui, sans-serif; padding: 1rem; }
+.tabs button { margin-right: .5rem; }
+.tabs button.active { font-weight: 700; text-decoration: underline; }
+.row { display: flex; gap: .5rem; margin: .5rem 0; }
+.path { font-family: ui-monospace, monospace; color: #666; word-break: break-all; }
+.error { color: #c00; }
+.update { color: #0a0; }
+.logs { font-family: ui-monospace, monospace; font-size: 12px; }
+.logs .stderr { color: #c00; }
+.logs-list { height: 70vh; overflow: auto; background: #111; color: #ddd; padding: .5rem; }
