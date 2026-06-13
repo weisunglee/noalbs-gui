@@ -65,10 +65,20 @@ pub async fn download_binary(state: State<'_, AppState>) -> AppResult<Settings> 
     let release = binary::fetch_latest_release(GITHUB_API).await?;
     let asset: &ReleaseAsset =
         binary::select_asset(&release.assets, target).ok_or(AppError::NoMatchingAsset)?;
-    let path = binary::download_and_extract(asset, &state.binary_dir).await?;
+
+    // Update in place: extract into the existing binary's directory so the
+    // config.json/.env next to it are preserved. Fall back to the default bin
+    // dir for a fresh install.
+    let dest = {
+        let s = state.settings.lock().await;
+        s.binary_path
+            .as_ref()
+            .and_then(|b| b.parent().map(|p| p.to_path_buf()))
+            .unwrap_or_else(|| state.binary_dir.clone())
+    };
+    let path = binary::download_and_extract(asset, &dest).await?;
 
     let mut s = state.settings.lock().await;
-    s.binary_source = BinarySource::Auto;
     s.binary_path = Some(path);
     s.installed_version = Some(binary::normalize_tag(&release.tag_name).to_string());
     s.save_to(&state.settings_path)?;
