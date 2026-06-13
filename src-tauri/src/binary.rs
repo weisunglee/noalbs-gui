@@ -40,18 +40,18 @@ pub async fn download_and_extract(asset: &ReleaseAsset, dest_dir: &Path) -> AppR
         .await?;
 
     let bin_name = if cfg!(windows) { "noalbs.exe" } else { "noalbs" };
-    let out_path = dest_dir.join(bin_name);
 
     // Extraction is CPU- and blocking-IO-heavy (multi-MB archives); run it off
     // the async runtime so it can't stall a Tauri worker thread.
     let is_zip = asset.name.ends_with(".zip");
     let bytes = bytes.to_vec();
+    let dest = dest_dir.to_path_buf();
     let out_path = tokio::task::spawn_blocking(move || -> AppResult<PathBuf> {
-        if is_zip {
-            extract_zip(&bytes, bin_name, &out_path)?;
+        let out_path = if is_zip {
+            extract_zip(&bytes, bin_name, &dest)?
         } else {
-            extract_tar_gz(&bytes, bin_name, &out_path)?;
-        }
+            extract_tar_gz(&bytes, bin_name, &dest)?
+        };
 
         #[cfg(unix)]
         {
@@ -69,32 +69,56 @@ pub async fn download_and_extract(asset: &ReleaseAsset, dest_dir: &Path) -> AppR
     Ok(out_path)
 }
 
-fn extract_tar_gz(bytes: &[u8], bin_name: &str, out_path: &Path) -> AppResult<()> {
+/// Companion files the official archive ships alongside the binary. We extract
+/// them so a fresh install has a working config, but never overwrite the user's.
+const COMPANIONS: [&str; 2] = ["config.json", ".env"];
+
+fn extract_tar_gz(bytes: &[u8], bin_name: &str, dest_dir: &Path) -> AppResult<PathBuf> {
     let gz = flate2::read::GzDecoder::new(Cursor::new(bytes));
     let mut archive = tar::Archive::new(gz);
+    let mut bin_path = None;
     for entry in archive.entries()? {
         let mut entry = entry?;
         let path = entry.path()?.into_owned();
-        if path.file_name().and_then(|f| f.to_str()) == Some(bin_name) {
-            entry.unpack(out_path)?;
-            return Ok(());
+        let fname = path.file_name().and_then(|f| f.to_str()).unwrap_or("").to_string();
+        if fname == bin_name {
+            let out = dest_dir.join(bin_name);
+            entry.unpack(&out)?;
+            bin_path = Some(out);
+        } else if COMPANIONS.contains(&fname.as_str()) {
+            let out = dest_dir.join(&fname);
+            if !out.exists() {
+                entry.unpack(&out)?;
+            }
         }
     }
-    Err(AppError::NoMatchingAsset)
+    bin_path.ok_or(AppError::NoMatchingAsset)
 }
 
-fn extract_zip(bytes: &[u8], bin_name: &str, out_path: &Path) -> AppResult<()> {
+fn extract_zip(bytes: &[u8], bin_name: &str, dest_dir: &Path) -> AppResult<PathBuf> {
     let mut archive = zip::ZipArchive::new(Cursor::new(bytes))?;
+    let mut bin_path = None;
     for i in 0..archive.len() {
         let mut file = archive.by_index(i)?;
         let name = file.name().to_string();
-        if name.ends_with(bin_name) {
-            let mut out = std::fs::File::create(out_path)?;
-            std::io::copy(&mut file, &mut out)?;
-            return Ok(());
+        let base = name.rsplit('/').next().unwrap_or(&name);
+        let copy_to = |file: &mut zip::read::ZipFile<'_>, out: &Path| -> AppResult<()> {
+            let mut o = std::fs::File::create(out)?;
+            std::io::copy(file, &mut o)?;
+            Ok(())
+        };
+        if base == bin_name {
+            let out = dest_dir.join(bin_name);
+            copy_to(&mut file, &out)?;
+            bin_path = Some(out);
+        } else if COMPANIONS.contains(&base) {
+            let out = dest_dir.join(base);
+            if !out.exists() {
+                copy_to(&mut file, &out)?;
+            }
         }
     }
-    Err(AppError::NoMatchingAsset)
+    bin_path.ok_or(AppError::NoMatchingAsset)
 }
 
 /// Returns the Rust target-triple substring present in the release asset name
@@ -216,6 +240,50 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let out = download_and_extract(asset, dir.path()).await.unwrap();
         assert!(out.exists());
+    }
+
+    /// Build a tar.gz like the official release: a top-level dir containing the
+    /// binary plus config.json and .env companions.
+    fn make_tar_gz_with_companions() -> Vec<u8> {
+        use std::io::Write;
+        let mut tar_buf = Vec::new();
+        {
+            let mut builder = tar::Builder::new(&mut tar_buf);
+            let files: [(&str, &[u8]); 3] = [
+                ("noalbs-v2.17.0-x/noalbs", b"#!/bin/sh\necho noalbs\n"),
+                ("noalbs-v2.17.0-x/config.json", b"{\"fresh\":true}"),
+                ("noalbs-v2.17.0-x/.env", b"TWITCH_BOT_USERNAME=example\n"),
+            ];
+            for (path, content) in files {
+                let mut header = tar::Header::new_gnu();
+                header.set_path(path).unwrap();
+                header.set_size(content.len() as u64);
+                header.set_mode(0o644);
+                header.set_cksum();
+                builder.append(&header, content).unwrap();
+            }
+            builder.finish().unwrap();
+        }
+        let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        gz.write_all(&tar_buf).unwrap();
+        gz.finish().unwrap()
+    }
+
+    #[test]
+    fn extracts_companions_without_clobbering() {
+        let archive = make_tar_gz_with_companions();
+        let dir = tempfile::tempdir().unwrap();
+
+        // First extraction: binary + both companions appear.
+        let bin = extract_tar_gz(&archive, "noalbs", dir.path()).unwrap();
+        assert!(bin.exists());
+        assert_eq!(std::fs::read_to_string(dir.path().join("config.json")).unwrap(), "{\"fresh\":true}");
+        assert!(dir.path().join(".env").exists());
+
+        // Pre-existing user config must NOT be overwritten on re-extract.
+        std::fs::write(dir.path().join("config.json"), "USER EDITED").unwrap();
+        extract_tar_gz(&archive, "noalbs", dir.path()).unwrap();
+        assert_eq!(std::fs::read_to_string(dir.path().join("config.json")).unwrap(), "USER EDITED");
     }
 
     fn assets() -> Vec<ReleaseAsset> {

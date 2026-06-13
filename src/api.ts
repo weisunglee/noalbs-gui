@@ -2,9 +2,13 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { Settings } from "./bindings/Settings";
 import type { LogLine } from "./bindings/LogLine";
+import type { Config } from "./bindings/Config";
+import type { SaveConfigResult } from "./bindings/SaveConfigResult";
 
 export const api = {
   getSettings: () => invoke<Settings>("get_settings"),
+  getConfig: () => invoke<Config | null>("get_config"),
+  saveConfig: (json: string) => invoke<SaveConfigResult>("save_config", { json }),
   saveSettings: (settings: Settings) => invoke<void>("save_settings", { settings }),
   setManualBinaryPath: (path: string) =>
     invoke<Settings>("set_manual_binary_path", { path }),

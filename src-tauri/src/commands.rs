@@ -5,6 +5,7 @@ use tauri::{AppHandle, Emitter, State};
 use tokio::sync::Mutex;
 
 use crate::binary::{self, ReleaseAsset};
+use crate::config::Config;
 use crate::error::{AppError, AppResult};
 use crate::process::{ExitSink, LineSink, LogLine, ProcessManager};
 use crate::settings::{BinarySource, Settings};
@@ -128,4 +129,43 @@ pub async fn restart_noalbs(app: AppHandle, state: State<'_, AppState>) -> AppRe
         }
     }
     start_noalbs(app, state).await
+}
+
+fn config_path(s: &crate::settings::Settings) -> AppResult<PathBuf> {
+    let dir = s.working_dir.clone().or_else(|| {
+        s.binary_path.as_ref().and_then(|b| b.parent().map(|p| p.to_path_buf()))
+    });
+    dir.map(|d| d.join("config.json")).ok_or(AppError::Other(
+        "no working directory or binary path set".into(),
+    ))
+}
+
+/// Returns the parsed config, or None if no config.json exists yet.
+#[tauri::command]
+pub async fn get_config(state: State<'_, AppState>) -> AppResult<Option<Config>> {
+    let s = state.settings.lock().await.clone();
+    let path = config_path(&s)?;
+    if !path.exists() {
+        return Ok(None);
+    }
+    Ok(Some(Config::load_from(&path)?))
+}
+
+#[derive(serde::Serialize, ts_rs::TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub struct SaveConfigResult {
+    pub config: Config,
+    pub running: bool,
+}
+
+/// Validate + atomically save the given JSON string as config.json. Returns the
+/// parsed config and whether noalbs is currently running.
+#[tauri::command]
+pub async fn save_config(state: State<'_, AppState>, json: String) -> AppResult<SaveConfigResult> {
+    let s = state.settings.lock().await.clone();
+    let path = config_path(&s)?;
+    let config = Config::save_str(&path, &json)?;
+    let running = state.process.lock().await.is_running();
+    Ok(SaveConfigResult { config, running })
 }
