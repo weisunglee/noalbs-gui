@@ -163,13 +163,55 @@ pub async fn restart_noalbs(app: AppHandle, state: State<'_, AppState>) -> AppRe
     start_noalbs(app, state).await
 }
 
-fn config_path(s: &crate::settings::Settings) -> AppResult<PathBuf> {
+pub fn config_path(s: &crate::settings::Settings) -> AppResult<PathBuf> {
     let dir = s.working_dir.clone().or_else(|| {
         s.binary_path.as_ref().and_then(|b| b.parent().map(|p| p.to_path_buf()))
     });
     dir.map(|d| d.join("config.json")).ok_or(AppError::Other(
         "no working directory or binary path set".into(),
     ))
+}
+
+pub fn config_backup_path(s: &crate::settings::Settings) -> AppResult<PathBuf> {
+    Ok(config_path(s)?.with_file_name("config.json.bak"))
+}
+
+#[derive(serde::Serialize, ts_rs::TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub struct BackupInfo {
+    pub exists: bool,
+    /// Backup file's last-modified time, ms since the Unix epoch.
+    pub modified_ms: Option<f64>,
+}
+
+#[tauri::command]
+pub async fn config_backup_info(state: State<'_, AppState>) -> AppResult<BackupInfo> {
+    let s = state.settings.lock().await.clone();
+    let path = config_backup_path(&s)?;
+    if !path.exists() {
+        return Ok(BackupInfo { exists: false, modified_ms: None });
+    }
+    let modified_ms = std::fs::metadata(&path)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_millis() as f64);
+    Ok(BackupInfo { exists: true, modified_ms })
+}
+
+#[tauri::command]
+pub async fn restore_config_backup(state: State<'_, AppState>) -> AppResult<SaveConfigResult> {
+    let s = state.settings.lock().await.clone();
+    let path = config_path(&s)?;
+    let backup = config_backup_path(&s)?;
+    if !backup.exists() {
+        return Err(AppError::Other("no backup found".into()));
+    }
+    std::fs::copy(&backup, &path)?;
+    let config = Config::load_from(&path)?;
+    let running = state.process.lock().await.is_running();
+    Ok(SaveConfigResult { config, running })
 }
 
 /// Returns the parsed config, or None if no config.json exists yet.

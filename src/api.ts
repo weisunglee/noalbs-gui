@@ -4,6 +4,7 @@ import type { Settings } from "./bindings/Settings";
 import type { LogLine } from "./bindings/LogLine";
 import type { Config } from "./bindings/Config";
 import type { SaveConfigResult } from "./bindings/SaveConfigResult";
+import type { BackupInfo } from "./bindings/BackupInfo";
 import type { EnvValues } from "./bindings/EnvValues";
 import type { DashboardSnapshot } from "./bindings/DashboardSnapshot";
 import type { NoalbsStatus } from "./bindings/NoalbsStatus";
@@ -26,6 +27,8 @@ export const api = {
   getEnv: () => invoke<EnvValues>("get_env"),
   saveEnv: (values: EnvValues) => invoke<void>("save_env", { values }),
   getDashboard: () => invoke<DashboardSnapshot>("get_dashboard"),
+  getBackupInfo: () => invoke<BackupInfo>("config_backup_info"),
+  restoreConfigBackup: () => invoke<SaveConfigResult>("restore_config_backup"),
 };
 
 export function onLog(cb: (line: LogLine) => void): Promise<UnlistenFn> {
