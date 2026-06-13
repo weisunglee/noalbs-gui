@@ -32,6 +32,37 @@ pub struct Release {
     pub assets: Vec<ReleaseAsset>,
 }
 
+/// Parse a semver version (e.g. "2.17.0") from a noalbs startup banner line
+/// such as "...╝ v2.17.0".
+pub fn parse_version_from_banner(line: &str) -> Option<String> {
+    let idx = line.find('v')?;
+    let rest = &line[idx + 1..];
+    let ver: String = rest
+        .chars()
+        .take_while(|c| c.is_ascii_digit() || *c == '.')
+        .collect();
+    if ver.split('.').count() == 3 && semver::Version::parse(&ver).is_ok() {
+        Some(ver)
+    } else {
+        None
+    }
+}
+
+/// Normalize a release tag like "v2.17.0" to "2.17.0".
+pub fn normalize_tag(tag: &str) -> &str {
+    tag.strip_prefix('v').unwrap_or(tag)
+}
+
+/// True when `latest` (tag or version) is strictly newer than `installed`.
+pub fn is_update_available(latest_tag: &str, installed: &str) -> bool {
+    let latest = semver::Version::parse(normalize_tag(latest_tag));
+    let cur = semver::Version::parse(normalize_tag(installed));
+    match (latest, cur) {
+        (Ok(l), Ok(c)) => l > c,
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -70,5 +101,28 @@ mod tests {
     #[test]
     fn current_target_is_known_on_test_host() {
         assert!(current_target().is_some());
+    }
+
+    #[test]
+    fn parses_version_from_banner() {
+        let line = "    ╚═╝  ╚═══╝ ╚═════╝ ╚═╝  ╚═╝╚══════╝╚═════╝ ╚══════╝ v2.17.0";
+        assert_eq!(parse_version_from_banner(line).as_deref(), Some("2.17.0"));
+    }
+
+    #[test]
+    fn banner_without_version_is_none() {
+        assert!(parse_version_from_banner("just some log line").is_none());
+    }
+
+    #[test]
+    fn update_available_when_newer() {
+        assert!(is_update_available("v2.18.0", "2.17.0"));
+        assert!(is_update_available("2.17.1", "2.17.0"));
+    }
+
+    #[test]
+    fn no_update_when_same_or_older() {
+        assert!(!is_update_available("v2.17.0", "2.17.0"));
+        assert!(!is_update_available("v2.16.0", "2.17.0"));
     }
 }
