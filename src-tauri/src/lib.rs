@@ -37,6 +37,8 @@ pub fn run() {
             crate::commands::start_noalbs,
             crate::commands::stop_noalbs,
             crate::commands::restart_noalbs,
+            crate::commands::get_config,
+            crate::commands::save_config,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
