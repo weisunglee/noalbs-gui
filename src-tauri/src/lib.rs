@@ -57,6 +57,18 @@ pub fn run() {
             crate::commands::config_backup_info,
             crate::commands::restore_config_backup,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            // Make sure the noalbs child process dies with the GUI. Tauri tears
+            // the app down on window close without dropping managed state, so
+            // `kill_on_drop` never fires and noalbs would otherwise be orphaned —
+            // leaving multiple instances answering chat (duplicate messages).
+            if matches!(event, tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit) {
+                use tauri::Manager;
+                if let Some(state) = app_handle.try_state::<crate::commands::AppState>() {
+                    state.process.blocking_lock().kill_sync();
+                }
+            }
+        });
 }
