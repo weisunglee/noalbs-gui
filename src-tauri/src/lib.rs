@@ -14,10 +14,11 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             use tauri::Manager;
-            let config_dir = app.path().app_config_dir().expect("config dir");
-            let data_dir = app.path().app_data_dir().expect("data dir");
-            let settings_path = config_dir.join("settings.json");
-            let binary_dir = data_dir.join("bin");
+            // Portable: keep settings + the downloaded noalbs binary in a folder
+            // next to the GUI executable (beside the .app on macOS), like NOALBS.
+            let base = crate::settings::portable_base();
+            let settings_path = base.join("settings.json");
+            let binary_dir = base.join("bin");
             let settings =
                 crate::settings::Settings::load_from(&settings_path).unwrap_or_default();
             app.manage(crate::commands::AppState {

@@ -1,8 +1,14 @@
 name: Release (rolling latest)
 
-# On every push to main (i.e. every merged PR), build installers for all
-# platforms and refresh a single rolling "latest" pre-release so users always
-# have a current download without building from source.
+# On every push to main (i.e. every merged PR), build ONE portable archive per
+# platform and refresh a single rolling "latest" pre-release, so users always
+# have a current, run-directly download without building from source.
+#
+# Assets (mirrors NOALBS's lean, portable releases — no installers):
+#   - noalbsgui-<ver>-x86_64-pc-windows-msvc.zip   (NOALBSGUI.exe inside)
+#   - noalbsgui-<ver>-aarch64-apple-darwin.tar.gz  (NOALBSGUI.app inside)
+#   - noalbsgui-<ver>-x86_64-apple-darwin.tar.gz   (NOALBSGUI.app inside)
+#   - noalbsgui-<ver>-x86_64-unknown-linux-gnu.AppImage
 on:
   push:
     branches: [main]
@@ -11,7 +17,6 @@ on:
 permissions:
   contents: write
 
-# If several merges land quickly, only the newest build matters.
 concurrency:
   group: release-latest
   cancel-in-progress: true
@@ -19,40 +24,23 @@ concurrency:
 jobs:
   create-release:
     runs-on: ubuntu-latest
-    outputs:
-      release_id: ${{ steps.create.outputs.result }}
     steps:
       - uses: actions/checkout@v4
 
-      # Remove the previous rolling release + its tag so we recreate it fresh
-      # at the current commit with no stale assets. Tolerate first-run absence.
-      - name: Delete previous 'latest' release
+      # Recreate the rolling release fresh at the current commit (drop stale
+      # assets). Non-draft so the matrix jobs can upload by tag. Tolerate
+      # first-run absence.
+      - name: Reset 'latest' release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release delete latest --cleanup-tag --yes --repo "$GITHUB_REPOSITORY" || true
-
-      - name: Create fresh 'latest' pre-release
-        id: create
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const sha = context.sha.substring(0, 7);
-            const { data } = await github.rest.repos.createRelease({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              tag_name: 'latest',
-              target_commitish: context.sha,
-              name: 'Latest build',
-              body: [
-                'Automated build of the latest `main` (commit `' + sha + '`).',
-                '',
-                'These builds are **unsigned** — macOS Gatekeeper / Windows SmartScreen may warn you.',
-                'See the README for how to open them.',
-              ].join('\n'),
-              draft: true,
-              prerelease: true,
-            });
-            return data.id;
+        run: |
+          gh release delete latest --cleanup-tag --yes --repo "$GITHUB_REPOSITORY" || true
+          gh release create latest \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Latest build" \
+            --prerelease \
+            --notes "Automated build of the latest \`main\` (commit ${GITHUB_SHA:0:7}). Portable, **unsigned** builds — macOS Gatekeeper / Windows SmartScreen may warn; see the README."
 
   build:
     needs: create-release
@@ -60,20 +48,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: macos-latest
-            target: aarch64-apple-darwin
-          - platform: macos-latest
-            target: x86_64-apple-darwin
-          - platform: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
-          - platform: windows-latest
-            target: x86_64-pc-windows-msvc
+          - { platform: macos-latest,   target: aarch64-apple-darwin,      kind: macos }
+          - { platform: macos-latest,   target: x86_64-apple-darwin,       kind: macos }
+          - { platform: ubuntu-22.04,   target: x86_64-unknown-linux-gnu,  kind: linux }
+          - { platform: windows-latest, target: x86_64-pc-windows-msvc,    kind: windows }
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Linux dependencies
-        if: matrix.platform == 'ubuntu-22.04'
+        if: matrix.kind == 'linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -101,25 +85,47 @@ jobs:
       - name: Install frontend dependencies
         run: npm install
 
-      - name: Build and upload to release
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          releaseId: ${{ needs.create-release.outputs.release_id }}
-          args: --target ${{ matrix.target }}
+      - name: Build (portable)
+        shell: bash
+        run: |
+          if [ "${{ matrix.kind }}" = "windows" ]; then
+            npm run tauri build -- --target ${{ matrix.target }} --no-bundle
+          elif [ "${{ matrix.kind }}" = "macos" ]; then
+            npm run tauri build -- --target ${{ matrix.target }} --bundles app
+          else
+            npm run tauri build -- --target ${{ matrix.target }} --bundles appimage
+          fi
 
-  publish-release:
-    needs: [create-release, build]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Publish the release (undraft)
-        uses: actions/github-script@v7
-        with:
-          script: |
-            await github.rest.repos.updateRelease({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              release_id: ${{ needs.create-release.outputs.release_id }},
-              draft: false,
-            });
+      - name: Package & upload (macOS / Linux)
+        if: matrix.kind != 'windows'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ver=$(node -p "require('./package.json').version")
+          t="${{ matrix.target }}"
+          rel="src-tauri/target/$t/release"
+          if [ "${{ matrix.kind }}" = "macos" ]; then
+            out="noalbsgui-$ver-$t.tar.gz"
+            tar -czf "$out" -C "$rel/bundle/macos" NOALBSGUI.app
+          else
+            app=$(ls "$rel"/bundle/appimage/*.AppImage | head -1)
+            out="noalbsgui-$ver-$t.AppImage"
+            cp "$app" "$out"
+          fi
+          gh release upload latest "$out" --clobber --repo "$GITHUB_REPOSITORY"
+
+      - name: Package & upload (Windows)
+        if: matrix.kind == 'windows'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ver = (Get-Content package.json | ConvertFrom-Json).version
+          $t = "${{ matrix.target }}"
+          $rel = "src-tauri/target/$t/release"
+          $exe = Get-ChildItem "$rel" -Filter *.exe | Sort-Object Length -Descending | Select-Object -First 1
+          if (-not $exe) { throw "no .exe found in $rel" }
+          $out = "noalbsgui-$ver-$t.zip"
+          Compress-Archive -Path $exe.FullName -DestinationPath $out -Force
+          gh release upload latest $out --clobber --repo $env:GITHUB_REPOSITORY
