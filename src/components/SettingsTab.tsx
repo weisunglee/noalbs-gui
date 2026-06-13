@@ -1,0 +1,88 @@
+import { useEffect, useState } from "react";
+import { open } from "@tauri-apps/plugin-dialog";
+import { api } from "../api";
+import type { Settings } from "../bindings/Settings";
+
+export function SettingsTab() {
+  const [settings, setSettings] = useState<Settings | null>(null);
+  const [running, setRunning] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [updateTag, setUpdateTag] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const refresh = async () => {
+    setSettings(await api.getSettings());
+    setRunning(await api.getStatus());
+  };
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  const guard = async (label: string, fn: () => Promise<void>) => {
+    setErr(null);
+    setBusy(label);
+    try {
+      await fn();
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  if (!settings) return <p>Loading…</p>;
+
+  return (
+    <section className="settings">
+      <h2>noalbs binary</h2>
+      <p>
+        Version: <strong>{settings.installedVersion ?? "—"}</strong>
+        {"  "}({settings.binarySource})
+      </p>
+      <p className="path">{settings.binaryPath ?? "no binary selected"}</p>
+
+      <div className="row">
+        <button
+          disabled={!!busy}
+          onClick={() => guard("download", async () => setSettings(await api.downloadBinary()))}
+        >
+          {busy === "download" ? "Downloading…" : "Download latest"}
+        </button>
+        <button
+          disabled={!!busy}
+          onClick={() => guard("check", async () => setUpdateTag(await api.checkUpdate()))}
+        >
+          Check for updates
+        </button>
+        <button
+          disabled={!!busy}
+          onClick={() =>
+            guard("pick", async () => {
+              const path = await open({ multiple: false, directory: false });
+              if (typeof path === "string") setSettings(await api.setManualBinaryPath(path));
+            })
+          }
+        >
+          Choose binary…
+        </button>
+      </div>
+      {updateTag && <p className="update">Update available: {updateTag}</p>}
+
+      <h2>Control</h2>
+      <p>Status: {running ? "running" : "stopped"}</p>
+      <div className="row">
+        <button disabled={!!busy || running} onClick={() => guard("start", async () => { await api.start(); await refresh(); })}>
+          Start
+        </button>
+        <button disabled={!!busy || !running} onClick={() => guard("stop", async () => { await api.stop(); await refresh(); })}>
+          Stop
+        </button>
+        <button disabled={!!busy} onClick={() => guard("restart", async () => { await api.restart(); await refresh(); })}>
+          Restart
+        </button>
+      </div>
+
+      {err && <p className="error">{err}</p>}
+    </section>
+  );
+}
