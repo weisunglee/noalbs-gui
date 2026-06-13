@@ -1,46 +1,43 @@
-name: Release (rolling latest)
+name: Release
 
-# On every push to main (i.e. every merged PR), build ONE portable archive per
-# platform and refresh a single rolling "latest" pre-release, so users always
-# have a current, run-directly download without building from source.
-#
-# Assets (mirrors NOALBS's lean, portable releases — no installers):
-#   - noalbsgui-<ver>-x86_64-pc-windows-msvc.zip   (NOALBSGUI.exe inside)
-#   - noalbsgui-<ver>-aarch64-apple-darwin.tar.gz  (NOALBSGUI.app inside)
-#   - noalbsgui-<ver>-x86_64-apple-darwin.tar.gz   (NOALBSGUI.app inside)
-#   - noalbsgui-<ver>-x86_64-unknown-linux-gnu.AppImage
+# Versioned releases, NOALBS-style: push a `vX.Y.Z` tag to cut a release.
+# CI builds one portable, run-directly archive per platform and publishes an
+# immutable release tagged with that version (shown with the version on the
+# repo homepage). Cut one with:  npm version <patch|minor|...> && git push --follow-tags
 on:
   push:
-    branches: [main]
+    tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)build, e.g. v0.1.0"
+        required: true
 
 permissions:
   contents: write
 
-concurrency:
-  group: release-latest
-  cancel-in-progress: true
-
 jobs:
   create-release:
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Resolve tag
+        id: tag
+        run: echo "tag=${{ github.event.inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
 
-      # Recreate the rolling release fresh at the current commit (drop stale
-      # assets). Non-draft so the matrix jobs can upload by tag. Tolerate
-      # first-run absence.
-      - name: Reset 'latest' release
+      - name: Create release (if it doesn't exist yet)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.tag }}
         run: |
-          gh release delete latest --cleanup-tag --yes --repo "$GITHUB_REPOSITORY" || true
-          gh release create latest \
-            --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" \
-            --title "Latest build" \
-            --latest \
-            --notes "Automated build of the latest \`main\` (commit ${GITHUB_SHA:0:7}). Portable, **unsigned** builds — macOS Gatekeeper / Windows SmartScreen may warn; see the README."
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$TAG" \
+              --latest \
+              --generate-notes
+          fi
 
   build:
     needs: create-release
@@ -101,31 +98,31 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.create-release.outputs.tag }}
         run: |
-          ver=$(node -p "require('./package.json').version")
           t="${{ matrix.target }}"
           rel="src-tauri/target/$t/release"
           if [ "${{ matrix.kind }}" = "macos" ]; then
-            out="noalbsgui-$ver-$t.tar.gz"
+            out="noalbsgui-$TAG-$t.tar.gz"
             tar -czf "$out" -C "$rel/bundle/macos" NOALBSGUI.app
           else
             app=$(ls "$rel"/bundle/appimage/*.AppImage | head -1)
-            out="noalbsgui-$ver-$t.AppImage"
+            out="noalbsgui-$TAG-$t.AppImage"
             cp "$app" "$out"
           fi
-          gh release upload latest "$out" --clobber --repo "$GITHUB_REPOSITORY"
+          gh release upload "$TAG" "$out" --clobber --repo "$GITHUB_REPOSITORY"
 
       - name: Package & upload (Windows)
         if: matrix.kind == 'windows'
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.create-release.outputs.tag }}
         run: |
-          $ver = (Get-Content package.json | ConvertFrom-Json).version
           $t = "${{ matrix.target }}"
           $rel = "src-tauri/target/$t/release"
           $exe = Get-ChildItem "$rel" -Filter *.exe | Sort-Object Length -Descending | Select-Object -First 1
           if (-not $exe) { throw "no .exe found in $rel" }
-          $out = "noalbsgui-$ver-$t.zip"
+          $out = "noalbsgui-$env:TAG-$t.zip"
           Compress-Archive -Path $exe.FullName -DestinationPath $out -Force
-          gh release upload latest $out --clobber --repo $env:GITHUB_REPOSITORY
+          gh release upload $env:TAG $out --clobber --repo $env:GITHUB_REPOSITORY
