@@ -39,7 +39,7 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "Latest build" \
-            --prerelease \
+            --latest \
             --notes "Automated build of the latest \`main\` (commit ${GITHUB_SHA:0:7}). Portable, **unsigned** builds — macOS Gatekeeper / Windows SmartScreen may warn; see the README."
 
   build:
