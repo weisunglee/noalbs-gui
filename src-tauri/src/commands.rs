@@ -259,10 +259,13 @@ pub async fn get_env(state: State<'_, AppState>) -> AppResult<EnvValues> {
     env_file::read_values(&env_path(&s)?)
 }
 
+/// Write the `.env` values and report whether noalbs is currently running, so
+/// the UI can offer to restart it for the change to take effect.
 #[tauri::command]
-pub async fn save_env(state: State<'_, AppState>, values: EnvValues) -> AppResult<()> {
+pub async fn save_env(state: State<'_, AppState>, values: EnvValues) -> AppResult<bool> {
     let s = state.settings.lock().await.clone();
-    env_file::write_values(&env_path(&s)?, &values)
+    env_file::write_values(&env_path(&s)?, &values)?;
+    Ok(state.process.lock().await.is_running())
 }
 
 #[derive(serde::Serialize, ts_rs::TS)]

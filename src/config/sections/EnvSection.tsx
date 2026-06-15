@@ -18,8 +18,19 @@ export function EnvSection() {
 
   const save = async () => {
     setStatus(null);
-    try { await api.saveEnv(env); setStatus("Saved .env"); }
-    catch (e) { setStatus(`Error: ${String(e)}`); }
+    try {
+      const running = await api.saveEnv(env);
+      if (running) {
+        if (confirm(".env saved. Restart noalbs to apply the changes now?")) {
+          await api.restart();
+          setStatus("Saved and restarted noalbs.");
+        } else {
+          setStatus("Saved. Restart noalbs to apply.");
+        }
+      } else {
+        setStatus("Saved .env");
+      }
+    } catch (e) { setStatus(`Error: ${String(e)}`); }
   };
 
   return (
