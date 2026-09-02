@@ -286,7 +286,7 @@ mod tests {
             let mut builder = tar::Builder::new(&mut tar_buf);
             let content = b"#!/bin/sh\necho noalbs\n";
             let mut header = tar::Header::new_gnu();
-            header.set_path("noalbs").unwrap();
+            header.set_path(binary_name()).unwrap();
             header.set_size(content.len() as u64);
             header.set_mode(0o755);
             header.set_cksum();
