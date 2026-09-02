@@ -18,6 +18,7 @@ pub struct AppState {
     pub settings: Mutex<Settings>,
     pub settings_path: PathBuf,
     pub binary_dir: PathBuf,
+    pub lifecycle: Mutex<()>,
     pub process: Mutex<ProcessManager>,
     pub status: Arc<StdMutex<NoalbsStatus>>,
 }
@@ -58,34 +59,35 @@ pub async fn check_update(state: State<'_, AppState>) -> AppResult<Option<String
     }
 }
 
-/// Download the latest binary for this OS/arch (auto mode). If noalbs is
-/// running, stop it before replacing the executable and restore the running
-/// state afterward, including when the download fails.
+/// Download and fully extract the latest binary before briefly taking the
+/// lifecycle lock to stop, replace, and (when needed) restart noalbs.
 #[tauri::command]
 pub async fn download_binary(app: AppHandle, state: State<'_, AppState>) -> AppResult<Settings> {
+    let target = binary::current_target().ok_or(AppError::NoMatchingAsset)?;
+    let release = binary::fetch_latest_release(GITHUB_API).await?;
+    let asset: &ReleaseAsset =
+        binary::select_asset(&release.assets, target).ok_or(AppError::NoMatchingAsset)?;
+    let target_binary = state
+        .settings
+        .lock()
+        .await
+        .binary_path
+        .clone()
+        .unwrap_or_else(|| state.binary_dir.join(binary::binary_name()));
+    let target_dir = target_binary.parent().ok_or_else(|| {
+        AppError::Other("binary target must have a parent directory".into())
+    })?;
+    std::fs::create_dir_all(target_dir)?;
+    let staging = tempfile::tempdir_in(target_dir)?;
+    let staged_binary = binary::download_and_extract(asset, staging.path()).await?;
+
+    let _lifecycle = state.lifecycle.lock().await;
     let was_running = state.process.lock().await.stop_if_running().await?;
-
     let update_result = async {
-        let target = binary::current_target().ok_or(AppError::NoMatchingAsset)?;
-        let release = binary::fetch_latest_release(GITHUB_API).await?;
-        let asset: &ReleaseAsset =
-            binary::select_asset(&release.assets, target).ok_or(AppError::NoMatchingAsset)?;
-
-        // Update in place: extract into the existing binary's directory so the
-        // config.json/.env next to it are preserved. Fall back to the default
-        // bin dir for a fresh install.
-        let dest = {
-            let s = state.settings.lock().await;
-            s.binary_path
-                .as_ref()
-                .and_then(|b| b.parent().map(|p| p.to_path_buf()))
-                .unwrap_or_else(|| state.binary_dir.clone())
-        };
-        let path = binary::download_and_extract(asset, &dest).await?;
-
+        binary::install_staged_binary(&staged_binary, &target_binary)?;
         let mut s = state.settings.lock().await;
         let mut updated = s.clone();
-        updated.binary_path = Some(path);
+        updated.binary_path = Some(target_binary);
         updated.installed_version = Some(binary::normalize_tag(&release.tag_name).to_string());
         updated.save_to(&state.settings_path)?;
         *s = updated.clone();
@@ -94,7 +96,7 @@ pub async fn download_binary(app: AppHandle, state: State<'_, AppState>) -> AppR
     .await;
 
     let restart_result = if was_running {
-        start_noalbs(app, state).await
+        start_noalbs_inner(&app, &state).await
     } else {
         Ok(())
     };
@@ -136,6 +138,11 @@ pub async fn get_status(app: AppHandle, state: State<'_, AppState>) -> AppResult
 
 #[tauri::command]
 pub async fn start_noalbs(app: AppHandle, state: State<'_, AppState>) -> AppResult<()> {
+    let _lifecycle = state.lifecycle.lock().await;
+    start_noalbs_inner(&app, &state).await
+}
+
+async fn start_noalbs_inner(app: &AppHandle, state: &AppState) -> AppResult<()> {
     let s = state.settings.lock().await.clone();
     let binary = s.binary_path.clone().ok_or(AppError::BinaryMissing)?;
     let cwd = s.working_dir.clone().unwrap_or_else(|| {
@@ -173,18 +180,18 @@ pub async fn start_noalbs(app: AppHandle, state: State<'_, AppState>) -> AppResu
 
 #[tauri::command]
 pub async fn stop_noalbs(state: State<'_, AppState>) -> AppResult<()> {
+    let _lifecycle = state.lifecycle.lock().await;
     state.process.lock().await.stop().await
 }
 
 #[tauri::command]
 pub async fn restart_noalbs(app: AppHandle, state: State<'_, AppState>) -> AppResult<()> {
+    let _lifecycle = state.lifecycle.lock().await;
     {
         let mut pm = state.process.lock().await;
-        if pm.is_running() {
-            pm.stop().await?;
-        }
+        let _ = pm.stop_if_running().await?;
     }
-    start_noalbs(app, state).await
+    start_noalbs_inner(&app, &state).await
 }
 
 pub fn config_path(s: &crate::settings::Settings) -> AppResult<PathBuf> {
