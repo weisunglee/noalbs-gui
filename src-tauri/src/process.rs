@@ -153,6 +153,18 @@ impl ProcessManager {
         }
     }
 
+    /// Stop the child when it is running and report whether an active process
+    /// was stopped. Waiting for exit is important on Windows: the executable
+    /// remains locked until the child has fully terminated.
+    pub async fn stop_if_running(&mut self) -> AppResult<bool> {
+        let _ = self.poll_exit();
+        if !self.is_running() {
+            return Ok(false);
+        }
+        self.stop().await?;
+        Ok(true)
+    }
+
     /// Synchronously signal the child to terminate without awaiting reaping.
     /// Used during app shutdown, where the Tauri event loop is tearing down and
     /// we can't run async code (and `kill_on_drop` won't fire because managed
@@ -204,6 +216,69 @@ mod tests {
         let snap = b.snapshot();
         assert_eq!(snap.len(), LOG_CAP);
         assert_eq!(snap.first().unwrap().seq, 10);
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn stopping_child_releases_executable_for_update() {
+        let dir = tempfile::tempdir().unwrap();
+        let binary = dir.path().join("noalbs.exe");
+        std::fs::copy(
+            std::path::Path::new(&std::env::var_os("SystemRoot").unwrap())
+                .join("System32")
+                .join("cmd.exe"),
+            &binary,
+        )
+        .unwrap();
+
+        let child = Command::new(&binary)
+            .args(["/c", "ping -n 30 127.0.0.1 > nul"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        let mut manager = ProcessManager {
+            child: Some(child),
+            buffer: Arc::new(Mutex::new(LogBuffer::default())),
+            started_at: Some(std::time::Instant::now()),
+        };
+
+        assert!(std::fs::File::create(&binary).is_err());
+        assert!(manager.stop_if_running().await.unwrap());
+        std::fs::File::create(&binary).expect("stopped executable should be replaceable");
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn stop_if_running_ignores_an_exited_unpolled_child() {
+        let command = std::path::Path::new(&std::env::var_os("SystemRoot").unwrap())
+            .join("System32")
+            .join("cmd.exe");
+        let child = Command::new(command)
+            .args(["/c", "exit 0"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        let mut manager = ProcessManager {
+            child: Some(child),
+            buffer: Arc::new(Mutex::new(LogBuffer::default())),
+            started_at: Some(std::time::Instant::now()),
+        };
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            if manager.child.as_mut().unwrap().try_wait().unwrap().is_some() {
+                break;
+            }
+            assert!(std::time::Instant::now() < deadline, "child did not exit");
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+
+        assert!(!manager.stop_if_running().await.unwrap());
+        assert!(!manager.is_running());
     }
 
     #[cfg(unix)]

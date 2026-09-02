@@ -34,8 +34,8 @@ zip = "2"
 semver = "1"
 ts-rs = "10"
 dirs = "5"
+tempfile = "3"
 
 [dev-dependencies]
 wiremock = "0.6"
-tempfile = "3"
 

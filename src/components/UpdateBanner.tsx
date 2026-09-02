@@ -29,10 +29,6 @@ export function UpdateBanner() {
     setMsg(null);
     try {
       await api.downloadBinary();
-      const running = await api.getStatus();
-      if (running && confirm("Updated. Restart noalbs now to run the new version?")) {
-        await api.restart();
-      }
       setMsg(`Updated to ${tag}.`);
       setTag(null);
     } catch (e) {

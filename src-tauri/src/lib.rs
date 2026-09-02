@@ -42,6 +42,7 @@ pub fn run() {
                 settings: tokio::sync::Mutex::new(settings),
                 settings_path,
                 binary_dir,
+                lifecycle: tokio::sync::Mutex::new(()),
                 process: tokio::sync::Mutex::new(crate::process::ProcessManager::default()),
                 status: std::sync::Arc::new(std::sync::Mutex::new(crate::status::NoalbsStatus::default())),
             });
