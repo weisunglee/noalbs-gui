@@ -58,31 +58,55 @@ pub async fn check_update(state: State<'_, AppState>) -> AppResult<Option<String
     }
 }
 
-/// Download the latest binary for this OS/arch (auto mode). Updates settings.
+/// Download the latest binary for this OS/arch (auto mode). If noalbs is
+/// running, stop it before replacing the executable and restore the running
+/// state afterward, including when the download fails.
 #[tauri::command]
-pub async fn download_binary(state: State<'_, AppState>) -> AppResult<Settings> {
-    let target = binary::current_target().ok_or(AppError::NoMatchingAsset)?;
-    let release = binary::fetch_latest_release(GITHUB_API).await?;
-    let asset: &ReleaseAsset =
-        binary::select_asset(&release.assets, target).ok_or(AppError::NoMatchingAsset)?;
+pub async fn download_binary(app: AppHandle, state: State<'_, AppState>) -> AppResult<Settings> {
+    let was_running = state.process.lock().await.stop_if_running().await?;
 
-    // Update in place: extract into the existing binary's directory so the
-    // config.json/.env next to it are preserved. Fall back to the default bin
-    // dir for a fresh install.
-    let dest = {
-        let s = state.settings.lock().await;
-        s.binary_path
-            .as_ref()
-            .and_then(|b| b.parent().map(|p| p.to_path_buf()))
-            .unwrap_or_else(|| state.binary_dir.clone())
+    let update_result = async {
+        let target = binary::current_target().ok_or(AppError::NoMatchingAsset)?;
+        let release = binary::fetch_latest_release(GITHUB_API).await?;
+        let asset: &ReleaseAsset =
+            binary::select_asset(&release.assets, target).ok_or(AppError::NoMatchingAsset)?;
+
+        // Update in place: extract into the existing binary's directory so the
+        // config.json/.env next to it are preserved. Fall back to the default
+        // bin dir for a fresh install.
+        let dest = {
+            let s = state.settings.lock().await;
+            s.binary_path
+                .as_ref()
+                .and_then(|b| b.parent().map(|p| p.to_path_buf()))
+                .unwrap_or_else(|| state.binary_dir.clone())
+        };
+        let path = binary::download_and_extract(asset, &dest).await?;
+
+        let mut s = state.settings.lock().await;
+        let mut updated = s.clone();
+        updated.binary_path = Some(path);
+        updated.installed_version = Some(binary::normalize_tag(&release.tag_name).to_string());
+        updated.save_to(&state.settings_path)?;
+        *s = updated.clone();
+        Ok(updated)
+    }
+    .await;
+
+    let restart_result = if was_running {
+        start_noalbs(app, state).await
+    } else {
+        Ok(())
     };
-    let path = binary::download_and_extract(asset, &dest).await?;
 
-    let mut s = state.settings.lock().await;
-    s.binary_path = Some(path);
-    s.installed_version = Some(binary::normalize_tag(&release.tag_name).to_string());
-    s.save_to(&state.settings_path)?;
-    Ok(s.clone())
+    match (update_result, restart_result) {
+        (Ok(settings), Ok(())) => Ok(settings),
+        (Err(update_error), Ok(())) => Err(update_error),
+        (Ok(_), Err(restart_error)) => Err(restart_error),
+        (Err(update_error), Err(restart_error)) => Err(AppError::Other(format!(
+            "{update_error}; also failed to restart noalbs: {restart_error}"
+        ))),
+    }
 }
 
 #[tauri::command]
