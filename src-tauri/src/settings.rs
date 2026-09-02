@@ -64,12 +64,15 @@ impl Settings {
 
     /// Atomic write: write to a temp file then rename.
     pub fn save_to(&self, path: &std::path::Path) -> Result<(), crate::error::AppError> {
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        let tmp = path.with_extension("json.tmp");
-        std::fs::write(&tmp, serde_json::to_string_pretty(self)?)?;
-        std::fs::rename(&tmp, path)?;
+        let parent = path.parent().ok_or_else(|| {
+            crate::error::AppError::Other("settings path must have a parent directory".into())
+        })?;
+        std::fs::create_dir_all(parent)?;
+        let mut tmp = tempfile::NamedTempFile::new_in(parent)?;
+        serde_json::to_writer_pretty(&mut tmp, self)?;
+        tmp.as_file_mut().sync_all()?;
+        tmp.persist(path)
+            .map_err(|error| crate::error::AppError::Io(error.error))?;
         Ok(())
     }
 }
@@ -128,6 +131,8 @@ mod tests {
         s.installed_version = Some("2.17.0".to_string());
         s.binary_source = BinarySource::Manual;
         s.theme = Theme::Dark;
+        s.save_to(&path).unwrap();
+        s.theme = Theme::Light;
         s.save_to(&path).unwrap();
         let loaded = Settings::load_from(&path).unwrap();
         assert_eq!(s, loaded);

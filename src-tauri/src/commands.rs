@@ -30,6 +30,7 @@ pub async fn get_settings(state: State<'_, AppState>) -> AppResult<Settings> {
 
 #[tauri::command]
 pub async fn save_settings(state: State<'_, AppState>, settings: Settings) -> AppResult<()> {
+    let _lifecycle = state.lifecycle.lock().await;
     settings.save_to(&state.settings_path)?;
     *state.settings.lock().await = settings;
     Ok(())
@@ -40,6 +41,7 @@ pub async fn set_manual_binary_path(
     state: State<'_, AppState>,
     path: PathBuf,
 ) -> AppResult<Settings> {
+    let _lifecycle = state.lifecycle.lock().await;
     let mut s = state.settings.lock().await;
     s.binary_source = BinarySource::Manual;
     s.binary_path = Some(path);
@@ -82,15 +84,35 @@ pub async fn download_binary(app: AppHandle, state: State<'_, AppState>) -> AppR
     let staged_binary = binary::download_and_extract(asset, staging.path()).await?;
 
     let _lifecycle = state.lifecycle.lock().await;
+    let current_target = state
+        .settings
+        .lock()
+        .await
+        .binary_path
+        .clone()
+        .unwrap_or_else(|| state.binary_dir.join(binary::binary_name()));
+    if current_target != target_binary {
+        return Err(AppError::Other(
+            "binary selection changed during download; retry the update".into(),
+        ));
+    }
     let was_running = state.process.lock().await.stop_if_running().await?;
     let update_result = async {
-        binary::install_staged_binary(&staged_binary, &target_binary)?;
+        let install = binary::install_staged_release(&staged_binary, &target_binary)?;
         let mut s = state.settings.lock().await;
         let mut updated = s.clone();
         updated.binary_path = Some(target_binary);
         updated.installed_version = Some(binary::normalize_tag(&release.tag_name).to_string());
-        updated.save_to(&state.settings_path)?;
+        if let Err(settings_error) = updated.save_to(&state.settings_path) {
+            if let Err(rollback_error) = install.rollback() {
+                return Err(AppError::Other(format!(
+                    "{settings_error}; also failed to restore the previous noalbs binary: {rollback_error}"
+                )));
+            }
+            return Err(settings_error);
+        }
         *s = updated.clone();
+        install.commit();
         Ok(updated)
     }
     .await;

@@ -77,10 +77,54 @@ pub async fn download_and_extract(asset: &ReleaseAsset, dest_dir: &Path) -> AppR
 /// them so a fresh install has a working config, but never overwrite the user's.
 const COMPANIONS: [&str; 2] = ["config.json", ".env"];
 
-/// Install a fully extracted staged binary at the exact configured path.
-/// The old binary is moved into the staging directory first, allowing a failed
-/// final rename to roll back without leaving a truncated executable behind.
-pub fn install_staged_binary(staged_binary: &Path, target_binary: &Path) -> AppResult<()> {
+/// A staged release installation that retains the previous executable until
+/// settings persistence succeeds. Dropping an uncommitted transaction makes a
+/// best-effort rollback; callers can call `rollback` to surface any error.
+pub struct ReleaseInstall {
+    target: PathBuf,
+    backup: Option<PathBuf>,
+    finished: bool,
+}
+
+impl ReleaseInstall {
+    pub fn commit(mut self) {
+        if let Some(backup) = &self.backup {
+            let _ = std::fs::remove_file(backup);
+        }
+        self.finished = true;
+    }
+
+    pub fn rollback(mut self) -> AppResult<()> {
+        self.rollback_inner()?;
+        self.finished = true;
+        Ok(())
+    }
+
+    fn rollback_inner(&self) -> AppResult<()> {
+        if self.target.exists() {
+            std::fs::remove_file(&self.target)?;
+        }
+        if let Some(backup) = &self.backup {
+            std::fs::rename(backup, &self.target)?;
+        }
+        Ok(())
+    }
+}
+
+impl Drop for ReleaseInstall {
+    fn drop(&mut self) {
+        if !self.finished {
+            let _ = self.rollback_inner();
+        }
+    }
+}
+
+/// Install a fully extracted staged release at the exact configured binary
+/// path, including first-run companion files without overwriting user files.
+pub fn install_staged_release(
+    staged_binary: &Path,
+    target_binary: &Path,
+) -> AppResult<ReleaseInstall> {
     let target_dir = target_binary.parent().ok_or_else(|| {
         AppError::Other("binary target must have a parent directory".into())
     })?;
@@ -98,14 +142,16 @@ pub fn install_staged_binary(staged_binary: &Path, target_binary: &Path) -> AppR
     }
 
     let backup = staging_dir.join("previous-noalbs-binary");
-    let had_previous = target_binary.exists();
-    if had_previous {
+    let backup = if target_binary.exists() {
         std::fs::rename(target_binary, &backup)?;
-    }
+        Some(backup)
+    } else {
+        None
+    };
 
     if let Err(install_error) = std::fs::rename(staged_binary, target_binary) {
-        if had_previous {
-            if let Err(rollback_error) = std::fs::rename(&backup, target_binary) {
+        if let Some(backup) = &backup {
+            if let Err(rollback_error) = std::fs::rename(backup, target_binary) {
                 return Err(AppError::Other(format!(
                     "failed to install noalbs: {install_error}; rollback also failed: {rollback_error}"
                 )));
@@ -114,10 +160,7 @@ pub fn install_staged_binary(staged_binary: &Path, target_binary: &Path) -> AppR
         return Err(install_error.into());
     }
 
-    if had_previous {
-        std::fs::remove_file(backup)?;
-    }
-    Ok(())
+    Ok(ReleaseInstall { target: target_binary.to_path_buf(), backup, finished: false })
 }
 
 fn extract_tar_gz(bytes: &[u8], bin_name: &str, dest_dir: &Path) -> AppResult<PathBuf> {
@@ -350,12 +393,29 @@ mod tests {
         std::fs::write(&configured, b"old binary").unwrap();
         std::fs::write(dir.path().join("config.json"), "user config").unwrap();
 
-        install_staged_binary(&staged_binary, &configured).unwrap();
+        install_staged_release(&staged_binary, &configured).unwrap().commit();
 
         assert_eq!(std::fs::read(&configured).unwrap(), b"new binary");
         assert_eq!(std::fs::read_to_string(dir.path().join("config.json")).unwrap(), "user config");
         assert_eq!(std::fs::read_to_string(dir.path().join(".env")).unwrap(), "fresh env");
         assert!(!dir.path().join(binary_name()).exists());
+        assert!(!staging.path().join("previous-noalbs-binary").exists());
+    }
+
+    #[test]
+    fn rolls_back_staged_release_before_commit() {
+        let dir = tempfile::tempdir().unwrap();
+        let staging = tempfile::tempdir_in(dir.path()).unwrap();
+        let staged_binary = staging.path().join(binary_name());
+        let configured = dir.path().join("configured-noalbs");
+        std::fs::write(&staged_binary, b"new binary").unwrap();
+        std::fs::write(&configured, b"old binary").unwrap();
+
+        let install = install_staged_release(&staged_binary, &configured).unwrap();
+        assert_eq!(std::fs::read(&configured).unwrap(), b"new binary");
+        install.rollback().unwrap();
+
+        assert_eq!(std::fs::read(&configured).unwrap(), b"old binary");
         assert!(!staging.path().join("previous-noalbs-binary").exists());
     }
 
