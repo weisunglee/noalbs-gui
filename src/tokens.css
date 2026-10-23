@@ -1,0 +1,20 @@
+:root {
+  color-scheme: light;
+  --bg: #f3f6f7; --fg: #182e35; --muted: #586d75; --border: #d9e2e5;
+  --card-bg: #fff; --input-bg: #fbfcfd; --input-fg: var(--fg);
+  --accent: #087f79; --accent-ink: #fff; --accent-soft: #e4f2ef;
+  --error: #b43e43; --ok: #197353; --warn: #946209;
+  --logs-bg: #12232b; --logs-fg: #d3e3e8; --banner-bg: var(--accent-soft);
+  --font-body: 'Segoe UI', 'Microsoft JhengHei', system-ui, sans-serif;
+  --font-mono: 'Cascadia Code', ui-monospace, monospace;
+  --space-xs: .5rem; --space-sm: .75rem; --space-md: 1rem; --space-lg: 1.5rem; --space-xl: 2rem;
+  --radius-input: 7px; --radius-card: 12px;
+}
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #101b22; --fg: #e2ecf0; --muted: #a0b3bc; --border: #30434d;
+  --card-bg: #192830; --input-bg: #14222a; --input-fg: var(--fg);
+  --accent: #68d2c3; --accent-ink: #102a28; --accent-soft: #223f40;
+  --error: #ff9599; --ok: #7ed6ad; --warn: #ebc16d;
+  --logs-bg: #0b151c; --logs-fg: #c8dce5;
+}

@@ -1,10 +1,13 @@
+import { useI18n } from "../i18n";
 import { useEffect, useState } from "react";
 import { api } from "../api";
+import { ErrorNotice } from "./ErrorNotice";
 
 export function UpdateBanner() {
+  const { t } = useI18n();
   const [tag, setTag] = useState<string | null>(null);   // newer version tag, if any
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [msg, setMsg] = useState<{ key: string; values: Record<string, string> } | null>(null);
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
@@ -29,10 +32,10 @@ export function UpdateBanner() {
     setMsg(null);
     try {
       await api.downloadBinary();
-      setMsg(`Updated to ${tag}.`);
+      setMsg({ key: "Updated to {version}.", values: { version: tag ?? "" } });
       setTag(null);
     } catch (e) {
-      setMsg(`Update failed: ${String(e)}`);
+      setMsg({ key: "Update failed: {error}", values: { error: String(e) } });
     } finally {
       setBusy(false);
     }
@@ -40,10 +43,10 @@ export function UpdateBanner() {
 
   return (
     <div className="update-banner">
-      <span>A new noalbs version is available: <strong>{tag}</strong>.</span>
-      <button disabled={busy} onClick={update}>{busy ? "Updating…" : "Update now"}</button>
-      <button disabled={busy} onClick={() => setDismissed(true)}>Dismiss</button>
-      {msg && <span className="note">{msg}</span>}
+      <span>{t("A new noalbs version is available:")} <strong>{tag}</strong></span>
+      <button disabled={busy} onClick={update}>{busy ? t("Updating…") : t("Update now")}</button>
+      <button disabled={busy} onClick={() => setDismissed(true)}>{t("Dismiss")}</button>
+      {msg && (msg.values.error ? <ErrorNotice error={msg.values.error} /> : <span role="status" className="note">{t(msg.key, msg.values)}</span>)}
     </div>
   );
 }

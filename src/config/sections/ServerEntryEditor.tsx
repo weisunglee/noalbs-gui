@@ -1,3 +1,4 @@
+import { useI18n } from "../../i18n";
 import type { StreamServerEntry } from "../../bindings/StreamServerEntry";
 import type { StreamServerKind } from "../../bindings/StreamServerKind";
 import type { ServerAuth } from "../../bindings/ServerAuth";
@@ -15,6 +16,7 @@ export function ServerEntryEditor({
   onChange: (e: StreamServerEntry) => void;
   onRemove: () => void;
 }) {
+  const { t } = useI18n();
   const set = (patch: Partial<StreamServerEntry>) => onChange({ ...entry, ...patch });
   const def = serverTypeDef(entry.streamServer.type);
 
@@ -31,16 +33,15 @@ export function ServerEntryEditor({
   return (
     <div className="server-entry">
       <div className="row">
-        <label>Type
-          <select value={entry.streamServer.type} onChange={(e) => changeType(e.target.value as StreamServerKind["type"])}>
+        <label>{t("Type")}<select value={entry.streamServer.type} onChange={(e) => changeType(e.target.value as StreamServerKind["type"])}>
             {SERVER_TYPES.map((s) => <option key={s.type} value={s.type}>{s.label}</option>)}
           </select>
         </label>
-        <label>Name <input value={entry.name} onChange={(e) => set({ name: e.target.value })} /></label>
-        <label>Priority <input type="number" value={entry.priority ?? 0}
+        <label>{t("Name")}<input value={entry.name} onChange={(e) => set({ name: e.target.value })} /></label>
+        <label>{t("Priority")}<input type="number" value={entry.priority ?? 0}
           onChange={(e) => set({ priority: e.target.value === "" ? null : Number(e.target.value) })} /></label>
-        <label><input type="checkbox" checked={entry.enabled} onChange={(e) => set({ enabled: e.target.checked })} /> enabled</label>
-        <button type="button" onClick={onRemove}>remove</button>
+        <label><input type="checkbox" checked={entry.enabled} onChange={(e) => set({ enabled: e.target.checked })} /> {t("enabled")}</label>
+        <button type="button" onClick={onRemove}>{t("remove")}</button>
       </div>
 
       {def.fields.map((f) =>
@@ -48,14 +49,14 @@ export function ServerEntryEditor({
           <AuthField key={f.key} value={(ss[f.key] as ServerAuth | null) ?? null}
             onChange={(v) => setField(f.key, v as unknown as string | null)} />
         ) : (
-          <label key={f.key}>{f.label}{f.optional ? " (optional)" : ""}
+          <label key={f.key}>{t(f.label)}{f.optional ? t(" (optional)") : ""}
             <input value={(ss[f.key] as string | null) ?? ""}
               onChange={(e) => setField(f.key, f.optional && e.target.value === "" ? null : e.target.value)} />
           </label>
         )
       )}
 
-      <OptionalScenesField label="Override scenes" value={entry.overrideScenes}
+      <OptionalScenesField label={t("Override scenes")} value={entry.overrideScenes}
         onChange={(v) => set({ overrideScenes: v })} />
 
       <DependsOnField value={entry.dependsOn} onChange={(v) => set({ dependsOn: v })} />
@@ -64,14 +65,15 @@ export function ServerEntryEditor({
 }
 
 function AuthField({ value, onChange }: { value: ServerAuth | null; onChange: (v: ServerAuth | null) => void }) {
+  const { t } = useI18n();
   return (
     <div className="subfield">
       <label><input type="checkbox" checked={value !== null}
-        onChange={(e) => onChange(e.target.checked ? { username: "", password: "" } : null)} /> Use auth</label>
+        onChange={(e) => onChange(e.target.checked ? { username: "", password: "" } : null)} /> {t("Use auth")}</label>
       {value && (
         <>
-          <label>Username <input value={value.username} onChange={(e) => onChange({ ...value, username: e.target.value })} /></label>
-          <label>Password <input type="password" value={value.password} onChange={(e) => onChange({ ...value, password: e.target.value })} /></label>
+          <label>{t("Username")}<input value={value.username} onChange={(e) => onChange({ ...value, username: e.target.value })} /></label>
+          <label>{t("Password")}<input type="password" value={value.password} onChange={(e) => onChange({ ...value, password: e.target.value })} /></label>
         </>
       )}
     </div>
@@ -79,15 +81,16 @@ function AuthField({ value, onChange }: { value: ServerAuth | null; onChange: (v
 }
 
 function OptionalScenesField({ label, value, onChange }: { label: string; value: SwitchingScenes | null; onChange: (v: SwitchingScenes | null) => void }) {
+  const { t } = useI18n();
   return (
     <div className="subfield">
       <label><input type="checkbox" checked={value !== null}
         onChange={(e) => onChange(e.target.checked ? { ...EMPTY_SCENES } : null)} /> {label}</label>
       {value && (
         <div className="row">
-          <label>Normal <input value={value.normal} onChange={(e) => onChange({ ...value, normal: e.target.value })} /></label>
-          <label>Low <input value={value.low} onChange={(e) => onChange({ ...value, low: e.target.value })} /></label>
-          <label>Offline <input value={value.offline} onChange={(e) => onChange({ ...value, offline: e.target.value })} /></label>
+          <label>{t("Normal")}<input value={value.normal} onChange={(e) => onChange({ ...value, normal: e.target.value })} /></label>
+          <label>{t("Low")}<input value={value.low} onChange={(e) => onChange({ ...value, low: e.target.value })} /></label>
+          <label>{t("Offline")}<input value={value.offline} onChange={(e) => onChange({ ...value, offline: e.target.value })} /></label>
         </div>
       )}
     </div>
@@ -95,14 +98,15 @@ function OptionalScenesField({ label, value, onChange }: { label: string; value:
 }
 
 function DependsOnField({ value, onChange }: { value: import("../../bindings/DependsOn").DependsOn | null; onChange: (v: import("../../bindings/DependsOn").DependsOn | null) => void }) {
+  const { t } = useI18n();
   return (
     <div className="subfield">
       <label><input type="checkbox" checked={value !== null}
-        onChange={(e) => onChange(e.target.checked ? { name: "", backupScenes: { ...EMPTY_SCENES } } : null)} /> Depends on another server</label>
+        onChange={(e) => onChange(e.target.checked ? { name: "", backupScenes: { ...EMPTY_SCENES } } : null)} /> {t("Depends on another server")}</label>
       {value && (
         <>
-          <label>Depends on (name) <input value={value.name} onChange={(e) => onChange({ ...value, name: e.target.value })} /></label>
-          <OptionalScenesInline label="Backup scenes" value={value.backupScenes}
+          <label>{t("Depends on (name)")}<input value={value.name} onChange={(e) => onChange({ ...value, name: e.target.value })} /></label>
+          <OptionalScenesInline label={t("Backup scenes")} value={value.backupScenes}
             onChange={(bs) => onChange({ ...value, backupScenes: bs })} />
         </>
       )}
@@ -111,12 +115,13 @@ function DependsOnField({ value, onChange }: { value: import("../../bindings/Dep
 }
 
 function OptionalScenesInline({ label, value, onChange }: { label: string; value: SwitchingScenes; onChange: (v: SwitchingScenes) => void }) {
+  const { t } = useI18n();
   return (
     <div className="row">
       <span>{label}:</span>
-      <label>Normal <input value={value.normal} onChange={(e) => onChange({ ...value, normal: e.target.value })} /></label>
-      <label>Low <input value={value.low} onChange={(e) => onChange({ ...value, low: e.target.value })} /></label>
-      <label>Offline <input value={value.offline} onChange={(e) => onChange({ ...value, offline: e.target.value })} /></label>
+      <label>{t("Normal")}<input value={value.normal} onChange={(e) => onChange({ ...value, normal: e.target.value })} /></label>
+      <label>{t("Low")}<input value={value.low} onChange={(e) => onChange({ ...value, low: e.target.value })} /></label>
+      <label>{t("Offline")}<input value={value.offline} onChange={(e) => onChange({ ...value, offline: e.target.value })} /></label>
     </div>
   );
 }

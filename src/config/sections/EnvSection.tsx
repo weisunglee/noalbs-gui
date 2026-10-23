@@ -1,52 +1,58 @@
+import { useI18n } from "../../i18n";
+import { useLocalizedConfirm } from "../../i18n/dialogs";
 import { useEffect, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { api } from "../../api";
+import { ErrorNotice } from "../../components/ErrorNotice";
 import type { EnvValues } from "../../bindings/EnvValues";
 
 const TOKEN_URL = "https://irlhosting.com/tmi/";
 
 export function EnvSection() {
+  const { t } = useI18n();
+  const confirm = useLocalizedConfirm();
   const [env, setEnv] = useState<EnvValues | null>(null);
   const [showOauth, setShowOauth] = useState(false);
-  const [status, setStatus] = useState<string | null>(null);
+  const [status, setStatus] = useState<{ key: string; values?: Record<string, string | number> } | null>(null);
+  const [failed, setFailed] = useState(false);
 
-  useEffect(() => { api.getEnv().then(setEnv).catch((e) => setStatus(String(e))); }, []);
-  if (!env) return <fieldset id="bot-credentials"><legend>Bot credentials (.env)</legend><p>Loading…</p></fieldset>;
+  useEffect(() => { api.getEnv().then(setEnv).catch((e) => { setFailed(true); setStatus({ key: "Error: {error}", values: { error: String(e) } }); }); }, []);
+  if (!env) return <fieldset id="bot-credentials"><legend>{t("Bot credentials (.env)")}</legend>{failed ? <ErrorNotice error={String(status?.values?.error ?? "")} /> : <p>{t("Loading…")}</p>}</fieldset>;
 
   const set = (patch: Partial<EnvValues>) => setEnv({ ...env, ...patch });
   const orNull = (v: string): string | null => (v.trim() === "" ? null : v);
 
   const save = async () => {
     setStatus(null);
+    setFailed(false);
     try {
       const running = await api.saveEnv(env);
       if (running) {
-        if (confirm(".env saved. Restart noalbs to apply the changes now?")) {
+        if (await confirm(t(".env saved. Restart noalbs to apply the changes now?"))) {
           await api.restart();
-          setStatus("Saved and restarted noalbs.");
+          setStatus({ key: "Saved and restarted noalbs." });
         } else {
-          setStatus("Saved. Restart noalbs to apply.");
+          setStatus({ key: "Saved. Restart noalbs to apply." });
         }
       } else {
-        setStatus("Saved .env");
+        setStatus({ key: "Saved .env" });
       }
-    } catch (e) { setStatus(`Error: ${String(e)}`); }
+    } catch (e) { setFailed(true); setStatus({ key: "Error: {error}", values: { error: String(e) } }); }
   };
 
   return (
     <fieldset id="bot-credentials">
-      <legend>Bot credentials (.env)</legend>
-      <p className="note">Stored in <code>.env</code> next to config.json. Sensitive values are hidden by default and never logged.</p>
-      <label>Twitch bot username <input value={env.twitchBotUsername ?? ""} onChange={(e) => set({ twitchBotUsername: orNull(e.target.value) })} /></label>
-      <label>Twitch bot OAuth
-        <input type={showOauth ? "text" : "password"} value={env.twitchBotOauth ?? ""} onChange={(e) => set({ twitchBotOauth: orNull(e.target.value) })} placeholder="oauth:..." />
-        <button type="button" onClick={() => setShowOauth((s) => !s)}>{showOauth ? "hide" : "show"}</button>
-        <button type="button" onClick={() => openUrl(TOKEN_URL)}>Get token</button>
+      <legend>{t("Bot credentials (.env)")}</legend>
+      <p className="note">{t("Stored in .env next to config.json. Sensitive values are hidden by default and never logged.")}</p>
+      <label>{t("Twitch bot username")}<input value={env.twitchBotUsername ?? ""} onChange={(e) => set({ twitchBotUsername: orNull(e.target.value) })} /></label>
+      <label>{t("Twitch bot OAuth")}<input type={showOauth ? "text" : "password"} value={env.twitchBotOauth ?? ""} onChange={(e) => set({ twitchBotOauth: orNull(e.target.value) })} placeholder="oauth:..." />
+        <button type="button" onClick={() => setShowOauth((s) => !s)}>{showOauth ? t("hide") : t("show")}</button>
+        <button type="button" onClick={() => openUrl(TOKEN_URL).catch(e => { setFailed(true); setStatus({ key: "Error: {error}", values: { error: String(e) } }); })}>{t("Get token")}</button>
       </label>
-      <label>API port (enables the local WebSocket API) <input type="number" value={env.apiPort ?? ""} onChange={(e) => set({ apiPort: orNull(e.target.value) })} /></label>
-      <label>Log dir (optional) <input value={env.logDir ?? ""} onChange={(e) => set({ logDir: orNull(e.target.value) })} /></label>
-      <div className="row"><button type="button" onClick={save}>Save .env</button></div>
-      {status && <p className={status.startsWith("Error") ? "error" : "update"}>{status}</p>}
+      <label>{t("API port (enables the local WebSocket API)")}<input type="number" value={env.apiPort ?? ""} onChange={(e) => set({ apiPort: orNull(e.target.value) })} /></label>
+      <label>{t("Log dir (optional)")}<input value={env.logDir ?? ""} onChange={(e) => set({ logDir: orNull(e.target.value) })} /></label>
+      <div className="row"><button className="primary" type="button" onClick={save}>{t("Save .env")}</button></div>
+      {status && (failed ? <ErrorNotice error={String(status.values?.error ?? "")} /> : <p role="status" className="update">{t(status.key, status.values)}</p>)}
     </fieldset>
   );
 }
