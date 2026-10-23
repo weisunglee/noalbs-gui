@@ -21,6 +21,8 @@ NOALBS is a tool for IRL streamers that automatically switches scenes in OBS bas
 
 ## Features
 
+- **Redesigned workbench** — separate Dashboard, Config, Connections & credentials, Logs, and Settings pages, with responsive layouts and light/dark themes. Config and credential drafts survive navigation between pages.
+- **Five interface languages** — English, Traditional Chinese, Simplified Chinese, Japanese, and Korean. The sidebar language selector takes effect immediately and remembers the choice locally; first launch follows the system language with English fallback. This does not change NOALBS chat language, JSON keys/values, scene names, credentials, or original logs.
 - **Get the binary for you** — downloads the correct official `noalbs` release for your OS/architecture (or point it at a binary you already have), shows the installed version, and checks for updates. The release ships a starter `config.json` and `.env`, which are placed for you (without overwriting any you already have).
 - **Run it** — start / stop / restart noalbs as a managed child process.
 - **Live logs** — noalbs's output streamed into a filterable, auto-scrolling log view.
@@ -30,7 +32,7 @@ NOALBS is a tool for IRL streamers that automatically switches scenes in OBS bas
   - **stream servers** — add/remove/prioritise, with type-specific fields for all supported types (NGINX, Node-Media-Server, Nimble, SRT-Live-Server, BELABOX, MediaMTX, RIST, Xiu, OpenIRL, IRLHosting), plus optional auth, scene overrides, and `dependsOn`
   - **chat** — Twitch/Kick platform, admins, language, prefix, toggles, and per-command permission/alias overrides
   - an **Advanced (raw JSON)** tab for power users, kept in sync with the form
-- **Credentials editor** — edit noalbs's `.env` (Twitch bot username/OAuth, API port, log dir). Secrets are masked by default, and a **Get token** button opens the token generator. Unrelated lines in your `.env` are preserved.
+- **Connections & credentials** — a separate page for noalbs's `.env` (Twitch bot username/OAuth, API port, log dir), saved independently from Config. Secrets are masked by default, and a **Get token** button opens the token generator. Unrelated lines in your `.env` are preserved.
 - **Status dashboard** — at-a-glance running state + uptime + version, OBS connection, current scene + last switch, switcher state, and the loaded user (parsed live from noalbs's log).
 
 Editing the config and saving while noalbs is running will offer to restart it so the changes take effect.

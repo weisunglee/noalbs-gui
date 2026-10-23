@@ -1,18 +1,32 @@
+import { useI18n, locales, localeNames } from "./i18n";
 import { useEffect, useRef, useState } from "react";
 import { DashboardTab } from "./components/DashboardTab";
 import { LogsTab } from "./components/LogsTab";
 import { SettingsTab } from "./components/SettingsTab";
+import { ThemePicker } from "./components/ThemePicker";
 import { ConfigTab } from "./config/ConfigTab";
 import { UpdateBanner } from "./components/UpdateBanner";
+import { EnvSection } from "./config/sections/EnvSection";
 import { api } from "./api";
 import { applyTheme, watchSystemTheme } from "./theme";
 import type { Theme } from "./bindings/Theme";
 import "./styles.css";
 
-type Tab = "dashboard" | "logs" | "settings" | "config";
+type Tab = "dashboard" | "logs" | "settings" | "config" | "credentials";
+const pages: { id: Tab; title: string; description: string; icon: string }[] = [
+  { id: "dashboard", title: "Dashboard", description: "Monitor your streaming connections and scene switching.", icon: "M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z" },
+  { id: "config", title: "Config", description: "Configure switching rules, scenes, servers, and chat.", icon: "M4 7h16 M4 17h16 M8 4v6 M16 14v6" },
+  { id: "credentials", title: "Connections & credentials", description: "Manage your bot credentials separately from stream configuration.", icon: "M14 4a6 6 0 1 1-4 10l-6 6H2v-4l6-6a6 6 0 0 1 6-6Z M16 8h.01" },
+  { id: "logs", title: "Logs", description: "Inspect the original output from NOALBS.", icon: "m4 6 5 6-5 6 M12 18h8" },
+  { id: "settings", title: "Settings", description: "Manage the application, appearance, and startup preferences.", icon: "M12 3v3 M12 18v3 M3 12h3 M18 12h3 M5 5l2 2 M17 17l2 2 M5 19l2-2 M17 7l2-2 M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0" },
+];
 
 export default function App() {
+  const { t, locale, setLocale } = useI18n();
   const [tab, setTab] = useState<Tab>("dashboard");
+  const [visited, setVisited] = useState<Set<Tab>>(() => new Set(["dashboard"]));
+  const navigate = (next: Tab) => { setVisited(previous => new Set([...previous, next])); setTab(next); };
+  const page = pages.find(item => item.id === tab)!;
   const themeRef = useRef<Theme>("system");
 
   useEffect(() => {
@@ -41,23 +55,28 @@ export default function App() {
 
   return (
     <div className="app">
-      <UpdateBanner />
-      <nav className="tabs">
-        <button className={tab === "dashboard" ? "active" : ""} onClick={() => setTab("dashboard")}>
-          Dashboard
-        </button>
-        <button className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}>
-          Settings
-        </button>
-        <button className={tab === "config" ? "active" : ""} onClick={() => setTab("config")}>
-          Config
-        </button>
-        <button className={tab === "logs" ? "active" : ""} onClick={() => setTab("logs")}>
-          Logs
-        </button>
-      </nav>
-      <main>
-        {tab === "dashboard" ? <DashboardTab onNavigate={setTab} /> : tab === "settings" ? <SettingsTab /> : tab === "config" ? <ConfigTab /> : <LogsTab />}
+      <aside className="sidebar">
+        <div className="brand"><span className="brand-mark" aria-hidden="true">N</span><div>NOALBS<small>{t("Stream control")}</small></div></div>
+        <nav className="tabs" aria-label="NOALBS">
+          {pages.map(item => <button key={item.id} aria-current={tab === item.id ? "page" : undefined} className={tab === item.id ? "active" : ""} onClick={() => navigate(item.id)}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d={item.icon} /></svg>{t(item.title)}
+          </button>)}
+        </nav>
+        <label className="language-picker">{t("Interface language")}
+          <select value={locale} onChange={event => setLocale(event.target.value as typeof locale)}>
+            {locales.map(value => <option key={value} value={value}>{localeNames[value]}</option>)}
+          </select>
+        </label>
+        <ThemePicker />
+      </aside>
+      <main id="main-content">
+        <header className="page-heading"><span className="eyebrow">NOALBS / {String(pages.indexOf(page) + 1).padStart(2, "0")}</span><h1>{t(page.title)}</h1><p>{t(page.description)}</p></header>
+        <UpdateBanner />
+        {visited.has("dashboard") && <div hidden={tab !== "dashboard"}><DashboardTab onNavigate={navigate} /></div>}
+        {visited.has("settings") && <div hidden={tab !== "settings"}><SettingsTab /></div>}
+        {visited.has("config") && <div hidden={tab !== "config"}><ConfigTab /></div>}
+        {visited.has("credentials") && <div hidden={tab !== "credentials"} className="credentials"><EnvSection /></div>}
+        {tab === "logs" && <LogsTab />}
       </main>
     </div>
   );

@@ -1,0 +1,12 @@
+[
+  {
+    "date": "2026-10-23",
+    "scope": "app",
+    "genre": "modern-minimal",
+    "macrostructure": "Workbench",
+    "designSystem": "design.md",
+    "accent": "teal",
+    "pages": ["dashboard", "config", "credentials", "logs", "settings"],
+    "verification": "Build and catalog tests passed; mocked browser UI verified five locales at six widths and inspected light/dark desktop screenshots. Native IPC integration not exercised."
+  }
+]

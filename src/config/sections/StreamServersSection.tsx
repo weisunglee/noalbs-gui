@@ -1,8 +1,10 @@
+import { useI18n } from "../../i18n";
 import type { Config } from "../../bindings/Config";
 import { ServerEntryEditor } from "./ServerEntryEditor";
 import { makeDefaultEntry } from "../serverTypes";
 
 export function StreamServersSection({ config, onChange }: { config: Config; onChange: (c: Config) => void }) {
+  const { t } = useI18n();
   const servers = config.switcher.streamServers;
   const setServers = (next: typeof servers) =>
     onChange({ ...config, switcher: { ...config.switcher, streamServers: next } });
@@ -14,12 +16,12 @@ export function StreamServersSection({ config, onChange }: { config: Config; onC
 
   return (
     <fieldset>
-      <legend>Stream servers ({servers.length})</legend>
-      {servers.length === 0 && <p className="note">No stream servers. Add one below.</p>}
+      <legend>{t("Stream servers ({count})", { count: servers.length })}</legend>
+      {servers.length === 0 && <p className="note">{t("No stream servers. Add one below.")}</p>}
       {servers.map((s, i) => (
         <ServerEntryEditor key={i} entry={s} onChange={(e) => update(i, e)} onRemove={() => remove(i)} />
       ))}
-      <button type="button" onClick={add}>+ Add stream server</button>
+      <button type="button" onClick={add}>{t("+ Add stream server")}</button>
     </fieldset>
   );
 }

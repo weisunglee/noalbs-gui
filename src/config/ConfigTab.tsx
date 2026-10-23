@@ -1,44 +1,38 @@
-import { useEffect, useState } from "react";
+import { useI18n } from "../i18n";
+import { useLocalizedConfirm } from "../i18n/dialogs";
+import { lazy, Suspense, useState } from "react";
 import { api } from "../api";
+import { ErrorNotice } from "../components/ErrorNotice";
 import type { Config } from "../bindings/Config";
 import { useConfig } from "./useConfig";
-import { consumeFocusEnv } from "./focusEnv";
 import { SwitcherSection } from "./sections/SwitcherSection";
 import { ScenesSection } from "./sections/ScenesSection";
 import { ObsSection } from "./sections/ObsSection";
 import { OptionsSection } from "./sections/OptionsSection";
 import { StreamServersSection } from "./sections/StreamServersSection";
 import { ChatSection } from "./sections/ChatSection";
-import { EnvSection } from "./sections/EnvSection";
-import { RawJsonEditor } from "./RawJsonEditor";
+const RawJsonEditor = lazy(() => import("./RawJsonEditor").then(module => ({ default: module.RawJsonEditor })));
 
 type Sub = "form" | "advanced";
 
 export function ConfigTab() {
+  const { t, locale } = useI18n();
+  const confirm = useLocalizedConfirm();
   const cfg = useConfig();
   const [sub, setSub] = useState<Sub>("form");
   const [jsonText, setJsonText] = useState("");
   const [jsonError, setJsonError] = useState<string | null>(null);
-  const [status, setStatus] = useState<string | null>(null);
+  const [status, setStatus] = useState<{ key: string; values?: Record<string, string | number> } | null>(null);
+  const [failed, setFailed] = useState(false);
 
-  useEffect(() => {
-    if (consumeFocusEnv()) {
-      setSub("form");
-      // wait a frame so EnvSection is in the DOM, then scroll to it
-      requestAnimationFrame(() => {
-        document.getElementById("bot-credentials")?.scrollIntoView({ behavior: "smooth", block: "start" });
-      });
-    }
-  }, []);
-
-  if (!cfg.loaded) return <p>Loading…</p>;
-  if (cfg.error) return <p className="error">{cfg.error}</p>;
+  if (!cfg.loaded) return <p>{t("Loading…")}</p>;
+  if (cfg.error) return <ErrorNotice error={cfg.error} />;
   if (cfg.missing || !cfg.config) {
     return (
       <section>
-        <p>No <code>config.json</code> found in the working directory.</p>
-        <p>Set a working directory (or download/select the binary) and create a config — full template support comes later. For now, create a config.json next to the binary, then reload.</p>
-        <button onClick={() => cfg.reload()}>Reload</button>
+        <p>{t("No config.json found in the working directory.")}</p>
+        <p>{t("Set a working directory (or download/select the binary) and create a config — full template support comes later. For now, create a config.json next to the binary, then reload.")}</p>
+        <button onClick={() => cfg.reload()}>{t("Reload")}</button>
       </section>
     );
   }
@@ -60,7 +54,7 @@ export function ConfigTab() {
         setJsonError(null);
         setSub("form");
       } catch (e) {
-        setJsonError(`Invalid JSON: ${String(e)}`);
+        setJsonError(String(e));
       }
     }
   };
@@ -69,57 +63,61 @@ export function ConfigTab() {
 
   const doRestore = async () => {
     setStatus(null);
+    setFailed(false);
     try {
       const info = await api.getBackupInfo();
-      if (!info.exists) { setStatus("No backup available yet."); return; }
-      const when = info.modifiedMs ? new Date(info.modifiedMs).toLocaleString() : "an unknown time";
-      if (!confirm(`Restore config.json from the backup taken at ${when}?\nThis overwrites your current config.`)) return;
+      if (!info.exists) { setStatus({ key: "No backup available yet." }); return; }
+      const when = info.modifiedMs ? new Date(info.modifiedMs).toLocaleString(locale) : t("an unknown time");
+      if (!await confirm(t("Restore backup from {when}? This overwrites your current config.", { when }))) return;
       const { config: restored, running } = await api.restoreConfigBackup();
       cfg.setConfig(restored);
       setSub("form");
       if (running) {
-        if (confirm("Restored. Restart noalbs to apply now?")) { await api.restart(); setStatus("Restored and restarted noalbs."); }
-        else setStatus("Restored. Restart noalbs to apply.");
+        if (await confirm(t("Restored. Restart noalbs to apply now?"))) { await api.restart(); setStatus({ key: "Restored and restarted noalbs." }); }
+        else setStatus({ key: "Restored. Restart noalbs to apply." });
       } else {
-        setStatus("Restored from backup.");
+        setStatus({ key: "Restored from backup." });
       }
     } catch (e) {
-      setStatus(`Error: ${String(e)}`);
+      setFailed(true);
+      setStatus({ key: "Error: {error}", values: { error: String(e) } });
     }
   };
 
   const doSave = async () => {
     setStatus(null);
+    setFailed(false);
     try {
       // On the Advanced tab, save the raw JSON text verbatim (the in-state
       // config may lag the editor). The backend validates it before writing.
       const { running } = await cfg.save(sub === "advanced" ? jsonText : undefined);
       if (running) {
-        if (confirm("Config saved. Restart noalbs to apply the changes now?")) {
+        if (await confirm(t("Config saved. Restart noalbs to apply the changes now?"))) {
           await api.restart();
-          setStatus("Saved and restarted noalbs.");
+          setStatus({ key: "Saved and restarted noalbs." });
         } else {
-          setStatus("Saved. Restart noalbs to apply.");
+          setStatus({ key: "Saved. Restart noalbs to apply." });
         }
       } else {
-        setStatus("Saved.");
+        setStatus({ key: "Saved." });
       }
     } catch (e) {
-      setStatus(`Error: ${String(e)}`);
+      setFailed(true);
+      setStatus({ key: "Error: {error}", values: { error: String(e) } });
     }
   };
 
   return (
     <section>
-      <div className="row">
-        <button className={sub === "form" ? "active" : ""} onClick={() => switchTo("form")}>Form</button>
-        <button className={sub === "advanced" ? "active" : ""} onClick={() => switchTo("advanced")}>Advanced (JSON)</button>
+      <div className="row config-toolbar">
+        <button className={sub === "form" ? "active" : ""} onClick={() => switchTo("form")}>{t("Form")}</button>
+        <button className={sub === "advanced" ? "active" : ""} onClick={() => switchTo("advanced")}>{t("Advanced (JSON)")}</button>
         <span style={{ flex: 1 }} />
-        <button onClick={doRestore}>Restore backup</button>
-        <button onClick={doSave}>Save</button>
+        <button onClick={doRestore}>{t("Restore backup")}</button>
+        <button className="primary" onClick={doSave}>{t("Save")}</button>
       </div>
-      {jsonError && <p className="error">{jsonError}</p>}
-      {status && <p className={status.startsWith("Error") ? "error" : "update"}>{status}</p>}
+      {jsonError && <ErrorNotice error={`json error: ${jsonError}`} />}
+      {status && (failed ? <ErrorNotice error={String(status.values?.error ?? "")} /> : <p role="status" className="update">{t(status.key, status.values)}</p>)}
 
       {sub === "form" ? (
         <div className="config-form">
@@ -129,10 +127,9 @@ export function ConfigTab() {
           <OptionsSection config={config} onChange={onChange} />
           <StreamServersSection config={config} onChange={onChange} />
           <ChatSection config={config} onChange={onChange} />
-          <EnvSection />
         </div>
       ) : (
-        <RawJsonEditor value={jsonText} onChange={setJsonText} />
+        <Suspense fallback={<p>{t("Loading…")}</p>}><RawJsonEditor value={jsonText} onChange={setJsonText} /></Suspense>
       )}
     </section>
   );
