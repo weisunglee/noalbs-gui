@@ -36,7 +36,13 @@ try {
      invoke: async (command, args) => {
        window.testCalls.push({ command, args });
        if (window.testFailures?.[command]) throw window.testFailures[command];
-       if (command === 'get_settings') return settings;
+       if (command === 'get_settings') return { ...settings };
+       if (command === 'plugin:dialog|open') return 'C:/Other/noalbs.exe';
+       if (command === 'set_manual_binary_path' || command === 'download_binary') {
+         Object.assign(settings, { binaryPath: 'C:/Other/noalbs.exe', workingDir: 'C:/Other', installedVersion: '9.0.0' });
+         config.software.host = 'other-host';
+         return { ...settings };
+       }
        if (command === 'get_config') return config;
        if (command === 'get_status') return false;
        if (command === 'get_dashboard') return { running: false, uptimeSecs: 3661, version: '2.13.0', status: { obs: 'disconnected', twitch: 'notConfigured', currentScene: 'Live 原文', lastSwitchType: 'Normal', switcherState: 'Waiting for OBS', user: 'test-stream' } };
@@ -53,7 +59,30 @@ try {
  await page.goto(process.env.UI_URL || 'http://127.0.0.1:4173');
  const language = page.locator('.language-picker select');
  await language.selectOption('en');
- if (process.env.AUDIT_CASES) {
+ if (process.env.SOURCE_CASES) {
+   await page.getByRole('button', { name: 'Config', exact: true }).click();
+   await page.getByLabel('Host', { exact: true }).fill('old-draft');
+   await page.getByRole('button', { name: 'Connections & credentials', exact: true }).click();
+   await page.getByLabel('Twitch bot username').fill('old-bot');
+   await page.getByRole('button', { name: 'Settings', exact: true }).click();
+   await page.getByRole('button', { name: 'Choose binary…', exact: true }).click();
+   await page.getByText('C:/Other/noalbs.exe', { exact: true }).waitFor();
+   await page.getByRole('button', { name: 'Config', exact: true }).click();
+   assert.equal(await page.getByLabel('Host', { exact: true }).inputValue(), 'other-host');
+   await page.getByRole('button', { name: 'Save', exact: true }).click();
+   await page.waitForFunction(() => window.testCalls.some(c => c.command === 'save_config'));
+   assert.equal(await page.evaluate(() => JSON.parse(window.testCalls.find(c => c.command === 'save_config').args.json).software.host), 'other-host');
+   await page.getByRole('button', { name: 'Connections & credentials', exact: true }).click();
+   assert.equal(await page.getByLabel('Twitch bot username').inputValue(), 'test-bot');
+   await page.getByRole('button', { name: 'Settings', exact: true }).click();
+   // An external settings change must not be overwritten by a stale UI snapshot.
+   await page.evaluate(() => window.__TAURI_INTERNALS__.invoke('save_settings', { settings: { installedVersion: '10.0.0' } }));
+   await page.getByLabel('Start noalbs automatically on launch').click();
+   await page.waitForFunction(() => window.testCalls.some(c => c.command === 'save_settings' && c.args.settings.autoStart));
+   assert.equal(await page.evaluate(() => window.testCalls.filter(c => c.command === 'save_settings').at(-1).args.settings.installedVersion), '10.0.0');
+   assert.deepEqual(errors, []);
+   console.log('PASS: binary changes reload configuration/credentials and preference saves preserve current settings.');
+ } else if (process.env.AUDIT_CASES) {
    await language.selectOption('zh-TW');
    await page.waitForSelector('.dashboard .cards');
    assert.match(await page.locator('.dashboard').innerText(), /等待 OBS 連線/);

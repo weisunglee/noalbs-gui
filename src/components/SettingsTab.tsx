@@ -22,13 +22,15 @@ export function SettingsTab() {
   useEffect(() => {
     const changed = (event: Event) => setSettings(previous => previous ? { ...previous, theme: (event as CustomEvent<Theme>).detail } : previous);
     window.addEventListener("themechange", changed);
+    const binaryChanged = (event: Event) => setSettings((event as CustomEvent<Settings>).detail);
+    window.addEventListener("binarychange", binaryChanged);
     refresh().catch(e => setErr(String(e)));
     // Poll status so a self-exit/crash of noalbs is reflected without the user
     // having to click anything. get_status also emits `noalbs-exit` on exit.
     const id = setInterval(() => {
       api.getStatus().then(setRunning).catch(() => {});
     }, 2000);
-    return () => { clearInterval(id); window.removeEventListener("themechange", changed); };
+    return () => { clearInterval(id); window.removeEventListener("themechange", changed); window.removeEventListener("binarychange", binaryChanged); };
   }, []);
 
   const guard = async (label: string, fn: () => Promise<void>) => {
@@ -44,6 +46,12 @@ export function SettingsTab() {
   };
 
   if (!settings) return err ? <ErrorNotice error={err} /> : <p>{t("Loading…")}</p>;
+
+  const savePreference = (patch: Partial<Pick<Settings, "autoStart" | "checkUpdatesOnStartup">>) => guard("save", async () => {
+    const next = { ...await api.getSettings(), ...patch };
+    await api.saveSettings(next);
+    setSettings(next);
+  });
 
   return (
     <section className="settings">
@@ -101,7 +109,7 @@ export function SettingsTab() {
         <h2>{t("Updates")}</h2>
         <label>
           <input type="checkbox" checked={settings.checkUpdatesOnStartup} disabled={!!busy}
-            onChange={(e) => { const next = { ...settings, checkUpdatesOnStartup: e.target.checked }; void guard("save", async () => { await api.saveSettings(next); setSettings(next); }); }} />
+            onChange={(e) => void savePreference({ checkUpdatesOnStartup: e.target.checked })} />
           {t("Check for noalbs updates on startup")}</label>
       </section>
 
@@ -109,7 +117,7 @@ export function SettingsTab() {
         <h2>{t("Startup")}</h2>
         <label>
           <input type="checkbox" checked={settings.autoStart} disabled={!!busy}
-            onChange={(e) => { const next = { ...settings, autoStart: e.target.checked }; void guard("save", async () => { await api.saveSettings(next); setSettings(next); }); }} />
+            onChange={(e) => void savePreference({ autoStart: e.target.checked })} />
           {t("Start noalbs automatically on launch")}</label>
       </section>
     </section>

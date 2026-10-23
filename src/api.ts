@@ -9,15 +9,21 @@ import type { EnvValues } from "./bindings/EnvValues";
 import type { DashboardSnapshot } from "./bindings/DashboardSnapshot";
 import type { NoalbsStatus } from "./bindings/NoalbsStatus";
 
+async function changeBinary(command: string, args?: Record<string, unknown>): Promise<Settings> {
+  const settings = await invoke<Settings>(command, args);
+  window.dispatchEvent(new CustomEvent<Settings>("binarychange", { detail: settings }));
+  return settings;
+}
+
 export const api = {
   getSettings: () => invoke<Settings>("get_settings"),
   getConfig: () => invoke<Config | null>("get_config"),
   saveConfig: (json: string) => invoke<SaveConfigResult>("save_config", { json }),
   saveSettings: (settings: Settings) => invoke<void>("save_settings", { settings }),
   setManualBinaryPath: (path: string) =>
-    invoke<Settings>("set_manual_binary_path", { path }),
+    changeBinary("set_manual_binary_path", { path }),
   checkUpdate: () => invoke<string | null>("check_update"),
-  downloadBinary: () => invoke<Settings>("download_binary"),
+  downloadBinary: () => changeBinary("download_binary"),
   getLogBuffer: () => invoke<LogLine[]>("get_log_buffer"),
   clearLogs: () => invoke<void>("clear_logs"),
   getStatus: () => invoke<boolean>("get_status"),

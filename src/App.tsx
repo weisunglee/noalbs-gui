@@ -24,6 +24,13 @@ const pages: { id: Tab; title: string; description: string; icon: string }[] = [
 export default function App() {
   const { t, locale, setLocale } = useI18n();
   const [tab, setTab] = useState<Tab>("dashboard");
+  const [binaryRevision, setBinaryRevision] = useState(0);
+  useEffect(() => {
+    // Drafts survive navigation, but belong to the selected binary's directory.
+    const changed = () => setBinaryRevision(previous => previous + 1);
+    window.addEventListener("binarychange", changed);
+    return () => window.removeEventListener("binarychange", changed);
+  }, []);
   const [visited, setVisited] = useState<Set<Tab>>(() => new Set(["dashboard"]));
   const navigate = (next: Tab) => { setVisited(previous => new Set([...previous, next])); setTab(next); };
   const page = pages.find(item => item.id === tab)!;
@@ -74,8 +81,8 @@ export default function App() {
         <UpdateBanner />
         {visited.has("dashboard") && <div hidden={tab !== "dashboard"}><DashboardTab onNavigate={navigate} /></div>}
         {visited.has("settings") && <div hidden={tab !== "settings"}><SettingsTab /></div>}
-        {visited.has("config") && <div hidden={tab !== "config"}><ConfigTab /></div>}
-        {visited.has("credentials") && <div hidden={tab !== "credentials"} className="credentials"><EnvSection /></div>}
+        {visited.has("config") && <div hidden={tab !== "config"}><ConfigTab key={binaryRevision} /></div>}
+        {visited.has("credentials") && <div hidden={tab !== "credentials"} className="credentials"><EnvSection key={binaryRevision} /></div>}
         {tab === "logs" && <LogsTab />}
       </main>
     </div>
